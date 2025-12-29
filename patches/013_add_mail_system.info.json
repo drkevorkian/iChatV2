@@ -1,0 +1,25 @@
+{
+    "patch_id": "013_add_mail_system",
+    "version": "1.0.0",
+    "description": "Add comprehensive mail system with folders, subjects, attachments, and threading",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-27",
+    "dependencies": ["000_init_patch_system"],
+    "rollback_available": true,
+    "files_changed": [
+        "patches/013_add_mail_system.sql",
+        "src/Repositories/MailRepository.php",
+        "api/mail.php",
+        "index.php",
+        "js/app.js",
+        "css/styles.css"
+    ],
+    "database_changes": [
+        "CREATE TABLE mail_messages",
+        "CREATE TABLE mail_attachments",
+        "CREATE TABLE mail_labels",
+        "CREATE TABLE mail_message_labels"
+    ],
+    "scope": "Creates a full-featured mail system with folders (inbox, sent, drafts, trash, archive, spam), subjects, attachments, threading, labels, and flags (starred, important). Distinct from IM system - Mail is for longer, formal messages while IM is for quick instant messages."
+}
+

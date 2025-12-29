@@ -1,0 +1,11 @@
+{
+    "patch_id": 22,
+    "name": "Add Owner Role and Permission System",
+    "description": "Adds Owner role with full access, Trusted Admin role, permission management system, and Owner backup tracking for all user uploads.",
+    "version": "1.0.0",
+    "author": "Sentinel Chat Platform",
+    "applies_to": "all",
+    "dependencies": ["005_add_authentication_system"],
+    "rollback_safe": false
+}
+

@@ -1,0 +1,23 @@
+{
+    "patch_id": "002_database_repair_system",
+    "version": "1.0.0",
+    "description": "Creates database repair system and ensures all required tables exist with correct structure. Use this patch to repair missing or corrupted database tables.",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-22",
+    "dependencies": ["000_init_patch_system"],
+    "rollback_available": false,
+    "files_changed": [
+        "src/Services/DatabaseRepairService.php",
+        "api/db-repair.php",
+        "schema.sql"
+    ],
+    "database_changes": [
+        "CREATE TABLE IF NOT EXISTS temp_outbox",
+        "CREATE TABLE IF NOT EXISTS im_messages",
+        "CREATE TABLE IF NOT EXISTS admin_escrow_requests",
+        "CREATE TABLE IF NOT EXISTS room_presence",
+        "CREATE TABLE IF NOT EXISTS patch_history"
+    ],
+    "scope": "Creates a comprehensive database repair system that can automatically detect and fix missing tables, missing columns, and other database issues. Includes API endpoint for health checks and repairs."
+}
+

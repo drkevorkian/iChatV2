@@ -1,0 +1,7 @@
+{
+    "patch_id": "999_test_patch",
+    "version": "1.0.0",
+    "description": "Test patch that can be reset and reapplied. Creates a test table for testing the patch system.",
+    "dependencies": ["000_init_patch_system"]
+}
+

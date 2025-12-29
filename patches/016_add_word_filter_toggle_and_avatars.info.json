@@ -1,0 +1,10 @@
+{
+    "patch_id": "016_add_word_filter_toggle_and_avatars",
+    "name": "Add word filter toggle and avatars",
+    "description": "Add word filter toggle to user settings and avatar/profile picture system",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-29",
+    "dependencies": ["014_add_user_settings", "005_add_authentication_system"],
+    "rollback": true
+}
+

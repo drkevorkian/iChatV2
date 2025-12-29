@@ -1,0 +1,10 @@
+{
+    "patch_id": "014_add_user_settings",
+    "name": "Add User Settings and Chat Media Support",
+    "description": "Adds user settings table for chat appearance preferences and chat media table for file attachments",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-27",
+    "dependencies": ["000_init_patch_system", "005_add_authentication_system"],
+    "rollback": true
+}
+

@@ -1,0 +1,3 @@
+# Protect patch files from direct web access
+Deny from all
+

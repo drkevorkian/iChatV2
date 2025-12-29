@@ -1,0 +1,10 @@
+{
+    "patch_id": "019_add_avatar_thumbnails",
+    "name": "Add Avatar Thumbnails",
+    "description": "Add thumbnail_data column to avatar_cache table for serving smaller avatars in chat and online users",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-29",
+    "dependencies": ["017_store_images_in_database"],
+    "rollback_available": true
+}
+

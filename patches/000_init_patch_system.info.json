@@ -1,0 +1,17 @@
+{
+    "patch_id": "000_init_patch_system",
+    "version": "1.0.0",
+    "description": "Initialize patch tracking system (creates patch_history table)",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-21",
+    "dependencies": [],
+    "rollback_available": false,
+    "files_changed": [
+        "schema.sql"
+    ],
+    "database_changes": [
+        "CREATE TABLE patch_history"
+    ],
+    "scope": "Creates the patch_history table needed to track all applied patches. This should be applied first before any other patches."
+}
+

@@ -1,0 +1,21 @@
+{
+    "patch_id": "018_add_gallery_public_private",
+    "name": "Add Gallery Public/Private Visibility",
+    "description": "Add is_public column to user_gallery table for controlling image visibility",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-29",
+    "dependencies": ["016_add_word_filter_toggle_and_avatars"],
+    "rollback_available": true,
+    "files_changed": [
+        "src/Repositories/UserGalleryRepository.php",
+        "api/gallery.php",
+        "api/gallery-image.php",
+        "index.php",
+        "js/app.js"
+    ],
+    "database_changes": [
+        "ALTER TABLE user_gallery ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Whether this image is public (visible to others) or private'"
+    ],
+    "scope": "Adds is_public column to user_gallery table for controlling image visibility. Allows users to set images as public (visible to others) or private (only visible to the user).",
+    "log_url": "/iChat/api/patch-log.php?patch_id=018_add_gallery_public_private"
+}   

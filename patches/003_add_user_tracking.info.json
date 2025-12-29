@@ -1,0 +1,24 @@
+{
+    "patch_id": "003_add_user_tracking",
+    "version": "1.0.0",
+    "description": "Adds user tracking system with IP addresses, geolocation support, avatars, and moderation capabilities (bans, mutes)",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-22",
+    "dependencies": ["000_init_patch_system", "001_add_room_presence"],
+    "rollback_available": false,
+    "files_changed": [
+        "src/Services/GeolocationService.php",
+        "src/Repositories/UserManagementRepository.php",
+        "api/user-management.php",
+        "schema.sql"
+    ],
+    "database_changes": [
+        "CREATE TABLE user_sessions",
+        "CREATE TABLE user_metadata",
+        "CREATE TABLE user_bans",
+        "CREATE TABLE user_mutes",
+        "ALTER TABLE room_presence ADD ip_address, session_id"
+    ],
+    "scope": "Adds comprehensive user tracking with IP addresses, geolocation, avatars, and moderation tools for admins and moderators. Includes kick, mute, ban, and IM capabilities."
+}
+

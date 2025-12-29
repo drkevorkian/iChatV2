@@ -1,0 +1,10 @@
+{
+    "patch_id": "007_add_unique_user_ids",
+    "name": "Add Unique User ID System",
+    "description": "Creates a system to track unique user IDs for all users (guests and registered). Format: Guest_x0123_(datetime)_(IP_ID) where 0123 is a random 4-digit number (0001-9999) and IP_ID is a unique serial number assigned to each IP address.",
+    "version": "1.0.0",
+    "dependencies": ["005_add_authentication_system"],
+    "applies_to": "database",
+    "rollback_available": true
+}
+

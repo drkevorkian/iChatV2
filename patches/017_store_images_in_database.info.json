@@ -1,0 +1,25 @@
+{
+    "patch_id": "017_store_images_in_database",
+    "version": "1.0.0",
+    "description": "Store user gallery images and avatar cache in database as BLOB instead of file system",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-30",
+    "dependencies": ["016_add_word_filter_toggle_and_avatars"],
+    "rollback_available": true,
+    "files_changed": [
+        "src/Repositories/UserGalleryRepository.php",
+        "src/Repositories/ProfileRepository.php",
+        "api/avatars.php",
+        "api/gallery.php",
+        "index.php",
+        "js/app.js"
+    ],
+    "database_changes": [
+        "CREATE TABLE avatar_cache",
+        "ALTER TABLE user_gallery ADD COLUMN image_data LONGBLOB",
+        "ALTER TABLE user_gallery ADD COLUMN thumbnail_data LONGBLOB",
+        "ALTER TABLE user_gallery ADD COLUMN md5_checksum VARCHAR(32)"
+    ],
+    "scope": "Migrates image storage from file system to database BLOB storage. Creates avatar cache table for fast avatar serving. Adds MD5 checksum support for image deduplication."
+}
+

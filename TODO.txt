@@ -1,0 +1,116 @@
+High-Priority Modern Upgrades (Do These First — Big Perceived Improvement)
+
+End-to-End Encryption (E2EE) for Messages
+Especially for IM/private chats. Use something like libsodium (easy in PHP) or implement Matrix-style double-ratchet if you want federation later. Users expect privacy in 2025 — this would be a killer differentiator for a self-hosted platform.
+Typing Indicators + Read Receipts
+Classic "user is typing…" and ✓✓ read markers. Super easy with WebSockets (broadcast events on keypress/focus). Makes conversations feel alive and responsive.
+Message Reactions (Emoji Quick-Replies)
+Let users react with 👍 ❤️ 😂 etc. without full replies. Very popular in every major app. Store reactions in DB and push via WS.
+Message Editing & Deletion (with Timestamps)
+Allow editing/deleting own messages within a time window (e.g., 5–15 min). Show "edited" label and original timestamp. Moderators could have global delete.
+Rich Message Previews (Links, YouTube, Images)
+Auto-embed previews for URLs (Open Graph metadata fetch), YouTube thumbnails/embeds, image previews. Your current media upload is great — extend to inline rich content.
+
+Medium-Priority (Great Polish & User Delight)
+
+Voice & Video Calls (1:1 or Small Groups)
+Integrate WebRTC (peer-to-peer) for calls. Self-hosted WebRTC signaling server is straightforward (can reuse our WS setup). Add screen sharing for support/admin use cases.
+AI-Powered Features
+Auto-moderation (flag toxic language via simple ML or API call)
+Smart replies/suggestions
+Summarize long threads
+Built-in bot for reminders/polls (easy to expand your existing bot profiles)
+
+Mobile-Friendly Progressive Web App (PWA)
+Make it installable on phones with offline support, push notifications (via service workers + WS). Huge for accessibility — many users expect chat apps to work like native mobile apps.
+Threads / Reply Chains
+Like Zulip or modern Discord/Slack: nested replies to keep main chat clean while allowing deep discussions.
+Push Notifications (Web + Mobile)
+Use Web Push API + service workers for browser notifications. For mobile, add a simple PWA manifest or consider a native wrapper later.
+
+Longer-Term / Advanced Ideas (If we want to Go Big)
+
+Federation (Matrix protocol compatibility) — join the open network, talk to Element users, etc.
+Voice Messages (record & send short audio clips)
+Polls, Quizzes, Quick Tasks/To-dos in chat
+Dark/Colorful/Themes with System Preference Detection (auto-switch)
+Omnichannel (connect to email, Discord, Telegram bridges)
+File Versioning / Collaborative Editing (basic Google Docs-like for shared files)
+
+These would keep the nostalgic/classic vibe while making it compete with 2025 apps like WhatsApp, Signal, Telegram, or self-hosted leaders (Rocket.Chat/Mattermost).
+Start with the top 5 — they'll give the biggest "wow" factor with the WebSockets foundation we now have.
+
+1. Audit Logging & Compliance Exports (Top Priority – Compliance Gold)
+Enterprises (especially GDPR/HIPAA/SOC2 environments) require full audit trails.
+
+Log every significant action: login/logout, message send/edit/delete, file upload/download, room join/leave, admin changes, moderation actions, failed logins, etc.
+Timestamp, user ID/handle, IP, user-agent, action type, before/after values (for edits).
+Export as CSV/JSON/PDF with digital signature (simple PHP + openssl).
+Retention policies (configurable auto-purge after X days/months for GDPR).
+Searchable admin audit dashboard.
+
+This is mandatory for SOC2 Type 2, HIPAA audit requests, and ISO 27001. Your current logging/rotation system is a great base — extend it.
+2. Granular Role-Based Access Control (RBAC) + Permission Groups
+Your current roles (user/moderator/admin) are solid, but enterprise wants finer control:
+
+Custom roles (e.g., "Compliance Officer", "Team Lead", "Guest Viewer")
+Per-room permissions (read-only, post-only, manage members, delete messages)
+Channel-level restrictions (private channels visible only to certain groups)
+Guest/external accounts with expiration + limited visibility (no access to internal rooms)
+LDAP/SSO integration (SAML 2.0 / OAuth2 / OpenID Connect) — critical for enterprises
+
+Rocket.Chat and Mattermost shine here with advanced RBAC; add this and you'll leapfrog many competitors.
+3. Message Retention & e-Discovery Policies
+
+Configurable per-room or global retention (e.g., keep messages 7 years for legal hold)
+Legal hold flags (prevent deletion even by admins)
+Bulk export/search for specific users/keywords/time ranges (for subpoenas/audits)
+Automatic archiving to cold storage
+
+This is huge for regulated industries (finance, healthcare). GDPR also loves configurable deletion.
+4. Single Sign-On (SSO) + Directory Sync (LDAP/AD)
+Most enterprises refuse standalone logins.
+
+SAML 2.0 (Okta, Azure AD, Keycloak)
+LDAP/Active Directory sync for users/groups
+Just-in-time provisioning
+
+Implement via a library like onelogin/php-saml — secure, well-documented, fits your "prepared statements at all costs" rule.
+5. Advanced Search with Full-Text Indexing + Access Control
+Current search is probably basic — upgrade to:
+
+Full-text search across messages/files (using MySQL fulltext or add Elasticsearch if you want to scale)
+Respect permissions (users only see what they're allowed to)
+Date/user/keyword filters + saved searches
+
+Enterprises live in search — make it blazing fast and secure.
+6. Data Export / Import + Migration Tools
+
+Full account/channel export (GDPR right to portability)
+Import from Slack/Discord/Teams exports (JSON/CSV parsers)
+One-click database backup/restore scripts
+
+Installers + migration tools = huge user-friendliness win.
+7. Automated Compliance Reports & Dashboard
+
+Generate periodic PDF/HTML reports: active users, message volume, security events, moderation actions
+Dashboard widgets for admins: login failures over time, flagged content trends, user activity heatmaps
+
+Visual proof for auditors = SOC2/HIPAA happiness.
+Quick Feasibility Roadmap (Aligned with Your Cursor Rules)
+
+Start with audit logging + retention — low risk, high value, builds on existing logging.
+Then RBAC expansion — refactor permissions system carefully (OOP, test 10×).
+Add SSO/LDAP — use battle-tested libs, heavy testing.
+Layer on advanced search + reports — optimize queries ruthlessly.
+
+These features will make Sentinel Chat legitimately enterprise-ready for teams that need control, auditability, and privacy above all else — exactly the gap many orgs are looking to fill in 2026.
+
+Audit logging is the perfect starter: low risk, immediate compliance value, extends your current logging foundation.
+Retention/legal hold pairs naturally — add DB flags/crons early.
+Keep everything OOP (e.g., AuditService, RetentionService classes) with detailed comments explaining "why" each security check exists.
+For all new endpoints: prepared statements, input validation/sanitization, rate limiting, CSP headers.
+Installer updates: add prompts/config for new retention/audit settings.
+Test rigorously: create CLI test suites (your rules!) to simulate audits, holds, SSO flows across Linux/Mac/Windows.
+
+This roadmap gets us to SOC2/HIPAA/GDPR-readiness faster while keeping the nostalgic vibe and self-hosted purity. Once audit/retention/RBAC are solid, the rest flows naturally.

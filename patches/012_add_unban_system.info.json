@@ -1,0 +1,21 @@
+{
+    "patch_id": "012_add_unban_system",
+    "version": "1.0.0",
+    "description": "Add unban email and token system for user bans",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-26",
+    "dependencies": ["003_add_user_tracking"],
+    "rollback_available": true,
+    "files_changed": [
+        "patches/012_add_unban_system.sql",
+        "src/Repositories/UserManagementRepository.php",
+        "api/user-management.php",
+        "unban.php"
+    ],
+    "database_changes": [
+        "ALTER TABLE user_bans ADD COLUMN unban_email",
+        "CREATE TABLE unban_tokens"
+    ],
+    "scope": "Adds email-based unban system with secure tokens, allowing users to unban themselves via email link"
+}
+

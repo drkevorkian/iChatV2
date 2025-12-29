@@ -1,0 +1,27 @@
+{
+    "patch_id": "005_add_authentication_system",
+    "version": "1.0.0",
+    "description": "Adds complete authentication system with user accounts, login, registration, logout, and role-based access control. Database tracks user roles (guest, user, moderator, administrator).",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-22",
+    "dependencies": ["000_init_patch_system", "004_add_user_profiles"],
+    "rollback_available": false,
+    "files_changed": [
+        "src/Services/AuthService.php",
+        "src/Repositories/AuthRepository.php",
+        "api/auth.php",
+        "login.php",
+        "register.php",
+        "index.php",
+        "js/app.js",
+        "css/styles.css"
+    ],
+    "database_changes": [
+        "CREATE TABLE users",
+        "CREATE TABLE auth_sessions",
+        "ALTER TABLE user_registrations ADD user_id",
+        "ALTER TABLE user_metadata ADD user_id"
+    ],
+    "scope": "Complete authentication system with registration, login, logout, session management, and role-based access control. Database stores user roles and authentication data."
+}
+

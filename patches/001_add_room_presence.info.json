@@ -1,0 +1,22 @@
+{
+    "patch_id": "001_add_room_presence",
+    "version": "1.0.0",
+    "description": "Add room presence table for tracking online users in chat rooms",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-21",
+    "dependencies": [],
+    "rollback_available": true,
+    "files_changed": [
+        "schema.sql",
+        "src/Repositories/PresenceRepository.php",
+        "api/presence.php",
+        "index.php",
+        "css/styles.css",
+        "js/app.js"
+    ],
+    "database_changes": [
+        "CREATE TABLE room_presence"
+    ],
+    "scope": "Adds user presence tracking system with heartbeat mechanism, online user display in UI, and API endpoints for presence management"
+}
+

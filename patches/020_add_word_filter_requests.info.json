@@ -1,0 +1,18 @@
+{
+    "patch_id": "020_add_word_filter_requests",
+    "version": "1.0.0",
+    "description": "Add word filter request system for moderators to request word filter changes",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-30",
+    "dependencies": ["010_add_chat_features"],
+    "files_changed": [
+        "patches/020_add_word_filter_requests.sql",
+        "src/Repositories/WordFilterRequestRepository.php",
+        "api/word-filter.php"
+    ],
+    "database_changes": [
+        "CREATE TABLE word_filter_requests"
+    ],
+    "scope": "database"
+}
+

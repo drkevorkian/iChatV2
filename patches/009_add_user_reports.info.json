@@ -1,0 +1,10 @@
+{
+    "patch_id": "009_add_user_reports",
+    "version": "1.0.0",
+    "description": "Add user reporting system for reporting inappropriate behavior",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-24",
+    "dependencies": ["005_add_authentication_system"],
+    "rollback": true
+}
+

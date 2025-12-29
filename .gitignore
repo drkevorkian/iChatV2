@@ -1,0 +1,74 @@
+# Sentinel Chat Platform - Git Ignore File
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# PHP
+/vendor/
+composer.lock
+*.log
+logs/
+*.cache
+
+# File storage (contains user data)
+storage/queue/*.json
+storage/queue/*.tmp
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+.npm
+.eslintcache
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.sqlite
+*.db
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+*.o
+*.a
+*.so
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

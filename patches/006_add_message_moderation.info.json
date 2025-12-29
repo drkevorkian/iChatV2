@@ -1,0 +1,7 @@
+{
+    "patch_id": "006_add_message_moderation",
+    "version": "1.0.0",
+    "description": "Adds message moderation system: columns for hiding, editing, and tracking moderation actions on messages.",
+    "dependencies": ["000_init_patch_system"]
+}
+

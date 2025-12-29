@@ -1,0 +1,23 @@
+{
+    "patch_id": "004_add_user_profiles",
+    "version": "1.0.0",
+    "description": "Adds comprehensive user profile system with view/edit modes. Registered users can create and edit profiles. Guests do not have profiles.",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-22",
+    "dependencies": ["000_init_patch_system", "003_add_user_tracking"],
+    "rollback_available": false,
+    "files_changed": [
+        "src/Repositories/ProfileRepository.php",
+        "api/profile.php",
+        "index.php",
+        "css/styles.css",
+        "js/app.js"
+    ],
+    "database_changes": [
+        "ALTER TABLE user_metadata ADD profile_visibility, banner_url, location, website, join_date, status, status_message",
+        "CREATE TABLE user_registrations",
+        "CREATE TABLE profile_views"
+    ],
+    "scope": "Adds user profile system with two-way view (owner sees edit mode, others see public view). Includes profile fields, registration tracking, and profile view analytics."
+}
+

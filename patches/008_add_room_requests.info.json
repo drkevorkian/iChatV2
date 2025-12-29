@@ -1,0 +1,10 @@
+{
+    "patch_id": "008_add_room_requests",
+    "version": "1.0.0",
+    "description": "Add room request system for members to request private rooms with passwords and invite codes",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-22",
+    "dependencies": ["005_add_authentication_system"],
+    "rollback": true
+}
+

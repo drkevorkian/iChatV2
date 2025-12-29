@@ -1,0 +1,27 @@
+{
+    "patch_id": "010_add_chat_features",
+    "version": "1.0.0",
+    "description": "Add word filter, smileys, ASCII art, and Pinky & Brain bot features",
+    "author": "Sentinel Chat Platform",
+    "date": "2025-12-23",
+    "dependencies": ["000_init_patch_system"],
+    "rollback_available": true,
+    "files_changed": [
+        "patches/010_add_chat_features.sql",
+        "src/Services/WordFilterService.php",
+        "src/Services/SmileyService.php",
+        "src/Services/AsciiArtService.php",
+        "src/Services/PinkyBrainService.php",
+        "api/messages.php",
+        "js/app.js"
+    ],
+    "database_changes": [
+        "CREATE TABLE word_filter",
+        "CREATE TABLE smiley_mappings",
+        "CREATE TABLE ascii_art_library",
+        "CREATE TABLE pinky_brain_responses",
+        "CREATE TABLE pinky_brain_state"
+    ],
+    "scope": "Adds comprehensive chat features including word filtering, smiley/emoticon conversion, ASCII art support, and Pinky & Brain interactive bot with /p&b command"
+}
+
