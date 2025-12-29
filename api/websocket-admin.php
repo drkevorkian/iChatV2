@@ -151,7 +151,7 @@ try {
             break;
             
         case 'restart':
-            // Restart WebSocket server (quick trigger, client will poll for status)
+            // Restart WebSocket server (truly non-blocking - returns immediately)
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('POST method required');
             }
@@ -162,53 +162,14 @@ try {
                 $oldPid = (int)trim(file_get_contents($pidFile));
             }
             
-            // Stop first (non-blocking)
-            $stopResult = stopWebSocketServer($pidFile);
-            if (!$stopResult['success']) {
-                error_log("WebSocket stop warning: " . $stopResult['message']);
-            }
+            // Trigger restart in background (non-blocking)
+            $restartResult = restartWebSocketServerNonBlocking($serverScript, $logFile, $pidFile, $websocketHost, $websocketPort);
             
-            // Small delay to let port free up
-            usleep(500000); // 0.5 seconds
-            
-            // Start again (non-blocking, returns quickly)
-            $startResult = startWebSocketServer($serverScript, $logFile, $pidFile);
-            
-            if (!$startResult['success']) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => $startResult['message']
-                ]);
-                break;
-            }
-            
-            // Wait a moment for server to start and bind to port
-            usleep(1500000); // 1.5 seconds
-            
-            // Check status using same detection logic (checks port 8420 first, then configured port)
-            $status = checkWebSocketStatus($websocketHost, $websocketPort, $pidFile);
-            
-            // Determine which port the server is actually running on
-            $actualPort = $websocketPort;
-            if ($status['running']) {
-                // Check if server is on port 8420 (Node.js default) instead of configured port
-                $port8420Check = @fsockopen($websocketHost, 8420, $errno, $errstr, 0.1);
-                if ($port8420Check) {
-                    fclose($port8420Check);
-                    $actualPort = 8420; // Server is running on Node.js default port
-                }
-            }
-            
-            // Return with detection results - client will poll if not detected yet
             echo json_encode([
-                'success' => true,
-                'message' => $status['running'] ? 'WebSocket server restarted successfully' : 'Restart initiated. Please wait while the server restarts...',
+                'success' => $restartResult['success'],
+                'message' => $restartResult['message'],
                 'old_pid' => $oldPid,
-                'new_pid' => $status['pid'],
-                'port' => $actualPort,
-                'running' => $status['running'],
-                'uptime' => $status['uptime'] ?? null,
-                'polling_required' => !$status['running'] // Only poll if not detected yet
+                'polling_required' => true // Always poll - restart happens in background
             ]);
             break;
             
@@ -303,7 +264,7 @@ try {
             break;
             
         case 'python-restart':
-            // Restart Python server (but NOT Node.js - Python will restart Node.js if needed)
+            // Restart Python server (truly non-blocking - returns immediately)
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('POST method required');
             }
@@ -313,37 +274,14 @@ try {
                 $oldPid = (int)trim(file_get_contents($pythonPidFile));
             }
             
-            // Stop Python (this will NOT kill Node.js)
-            $stopResult = stopPythonServer($pythonPidFile);
-            
-            // Small delay
-            usleep(500000); // 0.5 seconds
-            
-            // Start Python again
-            $startResult = startPythonServer($pythonScript, $pythonLogFile, $pythonPidFile);
-            
-            if (!$startResult['success']) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => $startResult['message']
-                ]);
-                break;
-            }
-            
-            // Wait for Python to start
-            usleep(1500000); // 1.5 seconds
-            
-            // Check status
-            $pythonStatus = checkPythonServerStatus($pythonPort, $pythonPidFile);
+            // Trigger restart in background (non-blocking)
+            $restartResult = restartPythonServerNonBlocking($pythonScript, $pythonLogFile, $pythonPidFile, $pythonPort);
             
             echo json_encode([
-                'success' => true,
-                'message' => $pythonStatus['running'] ? 'Python server restarted successfully' : 'Restart initiated. Please wait...',
+                'success' => $restartResult['success'],
+                'message' => $restartResult['message'],
                 'old_pid' => $oldPid,
-                'new_pid' => $pythonStatus['pid'],
-                'running' => $pythonStatus['running'],
-                'uptime' => $pythonStatus['uptime'] ?? null,
-                'polling_required' => !$pythonStatus['running']
+                'polling_required' => true // Always poll - restart happens in background
             ]);
             break;
             
@@ -1592,5 +1530,243 @@ function findPythonPath(): string {
     $fallback = PHP_OS_FAMILY === 'Windows' ? 'py' : 'python3';
     error_log("Using fallback Python command: $fallback");
     return $fallback;
+}
+
+/**
+ * Restart WebSocket server non-blocking (Windows-compatible)
+ * Spawns restart in background and returns immediately
+ */
+function restartWebSocketServerNonBlocking(string $script, string $logFile, string $pidFile, string $host, int $port): array {
+    if (PHP_OS_FAMILY === 'Windows') {
+        // Windows: Use PowerShell Start-Job to run restart in background
+        $nodePath = findNodePath();
+        $nodePathAbs = realpath($nodePath) ?: $nodePath;
+        $scriptAbs = realpath($script) ?: $script;
+        $logPathAbs = $logFile;
+        $pidFileAbs = realpath($pidFile) ?: $pidFile;
+        
+        // Create PowerShell script that does stop + start in background
+        $psScript = sprintf(
+            'Start-Job -ScriptBlock {
+                param($NodePath, $Script, $LogFile, $PidFile, $Host, $Port)
+                
+                # Stop server (non-blocking)
+                if (Test-Path $PidFile) {
+                    $pid = Get-Content $PidFile -ErrorAction SilentlyContinue
+                    if ($pid) {
+                        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                        Start-Sleep -Milliseconds 500
+                    }
+                    Remove-Item $PidFile -ErrorAction SilentlyContinue
+                }
+                
+                # Small delay for port to free up
+                Start-Sleep -Milliseconds 800
+                
+                # Start server (non-blocking)
+                $proc = Start-Process -FilePath $NodePath -ArgumentList $Script -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError ($LogFile + ".err")
+                if ($proc) {
+                    Set-Content -Path $PidFile -Value $proc.Id
+                }
+            } -ArgumentList %s, %s, %s, %s, %s, %d | Out-Null',
+            escapeshellarg($nodePathAbs),
+            escapeshellarg($scriptAbs),
+            escapeshellarg($logPathAbs),
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($host),
+            $port
+        );
+        
+        // Execute PowerShell command in background (truly non-blocking using VBScript)
+        // Write PowerShell script to temp file
+        $tempPsScript = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'restart_ws_' . uniqid() . '.ps1';
+        file_put_contents($tempPsScript, $psScript);
+        
+        // Create VBScript wrapper that runs PowerShell without waiting (bWaitOnReturn = False)
+        $tempVbsScript = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'restart_ws_' . uniqid() . '.vbs';
+        $vbsContent = sprintf(
+            "Set WshShell = CreateObject(\"WScript.Shell\")\r\nWshShell.Run \"powershell.exe -ExecutionPolicy Bypass -NoProfile -File %s\", 0, False\r\nSet WshShell = Nothing",
+            str_replace('\\', '\\\\', $tempPsScript)
+        );
+        file_put_contents($tempVbsScript, $vbsContent);
+        
+        // Execute VBScript using wscript (returns immediately, doesn't wait)
+        @exec('wscript.exe ' . escapeshellarg($tempVbsScript) . ' > NUL 2>&1');
+        
+        // Clean up temp scripts after delay (in background)
+        @exec("powershell -Command \"Start-Sleep -Seconds 10; Remove-Item " . escapeshellarg($tempPsScript) . ", " . escapeshellarg($tempVbsScript) . " -ErrorAction SilentlyContinue\" > NUL 2>&1 &");
+        
+        return [
+            'success' => true,
+            'message' => 'WebSocket server restart initiated in background. Status will update shortly.'
+        ];
+    } else {
+        // Unix/Linux: Use nohup with background execution
+        $nodePath = findNodePath();
+        $scriptAbs = realpath($script) ?: $script;
+        $logPathAbs = $logFile;
+        $pidFileAbs = realpath($pidFile) ?: $pidFile;
+        
+        // Create shell script for restart
+        $restartScript = sprintf(
+            '#!/bin/bash
+            # Stop server
+            if [ -f %s ]; then
+                PID=$(cat %s)
+                kill -TERM $PID 2>/dev/null
+                sleep 0.8
+                kill -9 $PID 2>/dev/null
+                rm -f %s
+            fi
+            
+            # Start server
+            sleep 0.5
+            nohup %s %s >> %s 2>&1 &
+            echo $! > %s',
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($nodePath),
+            escapeshellarg($scriptAbs),
+            escapeshellarg($logPathAbs),
+            escapeshellarg($pidFileAbs)
+        );
+        
+        // Write temp script
+        $tempScript = sys_get_temp_dir() . '/restart_ws_' . uniqid() . '.sh';
+        file_put_contents($tempScript, $restartScript);
+        chmod($tempScript, 0755);
+        
+        // Execute in background
+        exec("nohup bash " . escapeshellarg($tempScript) . " > /dev/null 2>&1 &");
+        
+        // Clean up temp script after a delay (in background)
+        exec("(sleep 5; rm -f " . escapeshellarg($tempScript) . ") > /dev/null 2>&1 &");
+        
+        return [
+            'success' => true,
+            'message' => 'WebSocket server restart initiated in background. Status will update shortly.'
+        ];
+    }
+}
+
+/**
+ * Restart Python server non-blocking (Windows-compatible)
+ * Spawns restart in background and returns immediately
+ */
+function restartPythonServerNonBlocking(string $script, string $logFile, string $pidFile, int $port): array {
+    if (PHP_OS_FAMILY === 'Windows') {
+        // Windows: Use PowerShell Start-Job to run restart in background
+        $pythonPath = findPythonPath();
+        $pythonPathAbs = realpath($pythonPath) ?: $pythonPath;
+        $scriptAbs = realpath($script) ?: $script;
+        $logPathAbs = $logFile;
+        $pidFileAbs = realpath($pidFile) ?: $pidFile;
+        
+        // Create PowerShell script that does stop + start in background
+        $psScript = sprintf(
+            'Start-Job -ScriptBlock {
+                param($PythonPath, $Script, $LogFile, $PidFile, $Port)
+                
+                # Stop server (non-blocking)
+                if (Test-Path $PidFile) {
+                    $pid = Get-Content $PidFile -ErrorAction SilentlyContinue
+                    if ($pid) {
+                        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                        Start-Sleep -Milliseconds 500
+                    }
+                    Remove-Item $PidFile -ErrorAction SilentlyContinue
+                }
+                
+                # Small delay for port to free up
+                Start-Sleep -Milliseconds 800
+                
+                # Start server (non-blocking)
+                $errLogFile = $LogFile + ".err"
+                $proc = Start-Process -FilePath $PythonPath -ArgumentList $Script -WindowStyle Hidden -PassThru -RedirectStandardOutput $LogFile -RedirectStandardError $errLogFile
+                if ($proc) {
+                    Set-Content -Path $PidFile -Value $proc.Id
+                    # Merge stderr into main log in background
+                    Start-Job -ScriptBlock { param($errFile, $logFile) Start-Sleep -Seconds 1; if (Test-Path $errFile) { Get-Content $errFile | Add-Content $logFile; Remove-Item $errFile -ErrorAction SilentlyContinue } } -ArgumentList $errLogFile, $LogFile | Out-Null
+                }
+            } -ArgumentList %s, %s, %s, %s, %d | Out-Null',
+            escapeshellarg($pythonPathAbs),
+            escapeshellarg($scriptAbs),
+            escapeshellarg($logPathAbs),
+            escapeshellarg($pidFileAbs),
+            $port
+        );
+        
+        // Execute PowerShell command in background (truly non-blocking using VBScript)
+        // Write PowerShell script to temp file
+        $tempPsScript = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'restart_python_' . uniqid() . '.ps1';
+        file_put_contents($tempPsScript, $psScript);
+        
+        // Create VBScript wrapper that runs PowerShell without waiting (bWaitOnReturn = False)
+        $tempVbsScript = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'restart_python_' . uniqid() . '.vbs';
+        $vbsContent = sprintf(
+            "Set WshShell = CreateObject(\"WScript.Shell\")\r\nWshShell.Run \"powershell.exe -ExecutionPolicy Bypass -NoProfile -File %s\", 0, False\r\nSet WshShell = Nothing",
+            str_replace('\\', '\\\\', $tempPsScript)
+        );
+        file_put_contents($tempVbsScript, $vbsContent);
+        
+        // Execute VBScript using wscript (returns immediately, doesn't wait)
+        @exec('wscript.exe ' . escapeshellarg($tempVbsScript) . ' > NUL 2>&1');
+        
+        // Clean up temp scripts after delay (in background)
+        @exec("powershell -Command \"Start-Sleep -Seconds 10; Remove-Item " . escapeshellarg($tempPsScript) . ", " . escapeshellarg($tempVbsScript) . " -ErrorAction SilentlyContinue\" > NUL 2>&1 &");
+        
+        return [
+            'success' => true,
+            'message' => 'Python server restart initiated in background. Status will update shortly.'
+        ];
+    } else {
+        // Unix/Linux: Use nohup with background execution
+        $pythonPath = findPythonPath();
+        $scriptAbs = realpath($script) ?: $script;
+        $logPathAbs = $logFile;
+        $pidFileAbs = realpath($pidFile) ?: $pidFile;
+        
+        // Create shell script for restart
+        $restartScript = sprintf(
+            '#!/bin/bash
+            # Stop server
+            if [ -f %s ]; then
+                PID=$(cat %s)
+                kill -TERM $PID 2>/dev/null
+                sleep 0.8
+                kill -9 $PID 2>/dev/null
+                rm -f %s
+            fi
+            
+            # Start server
+            sleep 0.5
+            nohup %s %s >> %s 2>&1 &
+            echo $! > %s',
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($pidFileAbs),
+            escapeshellarg($pythonPath),
+            escapeshellarg($scriptAbs),
+            escapeshellarg($logPathAbs),
+            escapeshellarg($pidFileAbs)
+        );
+        
+        // Write temp script
+        $tempScript = sys_get_temp_dir() . '/restart_python_' . uniqid() . '.sh';
+        file_put_contents($tempScript, $restartScript);
+        chmod($tempScript, 0755);
+        
+        // Execute in background
+        exec("nohup bash " . escapeshellarg($tempScript) . " > /dev/null 2>&1 &");
+        
+        // Clean up temp script after a delay (in background)
+        exec("(sleep 5; rm -f " . escapeshellarg($tempScript) . ") > /dev/null 2>&1 &");
+        
+        return [
+            'success' => true,
+            'message' => 'Python server restart initiated in background. Status will update shortly.'
+        ];
+    }
 }
 
