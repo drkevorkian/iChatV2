@@ -20,6 +20,7 @@ use iChat\Services\SmileyService;
 use iChat\Services\AsciiArtService;
 use iChat\Services\PinkyBrainService;
 use iChat\Services\AuthService;
+use iChat\Services\AIService;
 
 header('Content-Type: application/json');
 
@@ -186,6 +187,35 @@ try {
             $filterResult = $wordFilter->filterMessage($messageText, $senderHandle);
             $filteredMessage = $filterResult['filtered'];
             $isFlagged = $filterResult['flagged'];
+            $flaggedWords = $filterResult['flagged_words'] ?? [];
+            
+            // If words were flagged, trigger AI moderation
+            $aiModerationResult = null;
+            if ($isFlagged && !empty($flaggedWords)) {
+                $aiService = new AIService();
+                $aiModerationResult = $aiService->moderateMessage(
+                    $messageText,
+                    $senderHandle,
+                    $flaggedWords,
+                    null, // messageId will be set after enqueue
+                    'room'
+                );
+                
+                // Apply moderation action if needed
+                if ($aiModerationResult['action'] === 'delete') {
+                    // Don't send the message
+                    http_response_code(403);
+                    echo json_encode([
+                        'success' => false,
+                        'error' => 'Message was flagged by AI moderation and cannot be sent.',
+                        'moderated' => true,
+                    ]);
+                    exit;
+                } elseif ($aiModerationResult['action'] === 'hide') {
+                    // Mark message as hidden
+                    $isFlagged = true; // Will be handled by is_hidden flag
+                }
+            }
             
             // Validate ASCII art if present
             if ($asciiArtService->containsAsciiArt($filteredMessage)) {
@@ -201,12 +231,26 @@ try {
             // Re-encode message (use rawurlencode to avoid + signs, uses %20 instead)
             $processedCipherBlob = base64_encode(rawurlencode($filteredMessage));
             
+            // Determine if message should be hidden based on AI moderation
+            $shouldHide = false;
+            if ($aiModerationResult && in_array($aiModerationResult['action'], ['hide', 'warn'])) {
+                $shouldHide = true;
+            }
+            
             $messageId = $repository->enqueueMessage(
                 $roomId,
                 $senderHandle,
                 $processedCipherBlob,
-                $filterVersion
+                $filterVersion,
+                $shouldHide
             );
+            
+            // Update AI moderation log with message ID if available
+            if ($aiModerationResult && $messageId && is_numeric($messageId)) {
+                // Update the most recent moderation log for this message
+                $moderationRepo = new \iChat\Repositories\AIModerationRepository();
+                // Note: The log was created without messageId, we could update it here if needed
+            }
             
             // Mark as flagged if word filter flagged it
             if ($isFlagged) {

@@ -25,7 +25,7 @@ class WordFilterService
      * 
      * @param string $message Original message
      * @param string|null $userHandle User handle to check if filtering is enabled for them
-     * @return array Filtered message and flag status ['filtered' => string, 'flagged' => bool]
+     * @return array Filtered message and flag status ['filtered' => string, 'flagged' => bool, 'flagged_words' => array]
      */
     public function filterMessage(string $message, ?string $userHandle = null): array
     {
@@ -34,11 +34,13 @@ class WordFilterService
             return [
                 'filtered' => $message,
                 'flagged' => false,
+                'flagged_words' => [],
             ];
         }
         
         $filtered = $message;
         $flagged = false;
+        $flaggedWords = [];
         
         // Load filters from database
         $filters = $this->getActiveFilters();
@@ -75,6 +77,7 @@ class WordFilterService
                     if (preg_match($regexPattern, $filtered)) {
                         $filtered = preg_replace($regexPattern, $replacement, $filtered);
                         $flagged = true;
+                        $flaggedWords[] = $pattern;
                     }
                 } catch (\Exception $e) {
                     // Invalid regex - skip this filter
@@ -86,6 +89,7 @@ class WordFilterService
                 if (preg_match($wordBoundaryPattern, $filtered)) {
                     $filtered = preg_replace($wordBoundaryPattern, $replacement, $filtered);
                     $flagged = true;
+                    $flaggedWords[] = $pattern;
                 }
             }
         }
@@ -93,6 +97,7 @@ class WordFilterService
         return [
             'filtered' => $filtered,
             'flagged' => $flagged,
+            'flagged_words' => $flaggedWords,
         ];
     }
     

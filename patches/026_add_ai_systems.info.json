@@ -1,0 +1,11 @@
+{
+    "patch_id": 26,
+    "name": "Add AI Systems Support",
+    "description": "Creates tables for AI-powered features: auto-moderation, smart replies, thread summarization, and bot features (reminders/polls).",
+    "version": "1.0.0",
+    "author": "Sentinel Chat Platform",
+    "applies_to": "all",
+    "dependencies": ["000_init_patch_system"],
+    "rollback_safe": false
+}
+

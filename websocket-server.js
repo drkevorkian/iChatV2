@@ -463,6 +463,16 @@ async function handleMessage(ws, message) {
             ws.send(JSON.stringify({ type: 'pong' }));
             break;
             
+        case 'typing':
+            // Handle typing indicator
+            await handleTypingIndicator(ws, message, userHandle);
+            break;
+            
+        case 'read_receipt':
+            // Handle read receipt
+            await handleReadReceipt(ws, message, userHandle);
+            break;
+            
         case 'get_stats':
             // Return server statistics
             ws.send(JSON.stringify({
@@ -499,8 +509,134 @@ async function handleMessage(ws, message) {
             broadcastPresenceUpdate(roomId, userHandle, message.status || 'online');
             break;
             
+        case 'typing':
+            // Handle typing indicator
+            await handleTypingIndicator(ws, message, userHandle);
+            break;
+            
+        case 'read_receipt':
+            // Handle read receipt
+            await handleReadReceipt(ws, message, userHandle);
+            break;
+            
         default:
             console.log(`[WS] Unknown message type: ${message.type}`);
+    }
+}
+
+/**
+ * Handle typing indicator
+ */
+async function handleTypingIndicator(ws, message, userHandle) {
+    const conversationWith = message.conversation_with;
+    const isTyping = message.is_typing !== false;
+    
+    if (!conversationWith) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: 'conversation_with is required'
+        }));
+        return;
+    }
+    
+    // Update database
+    if (dbPool) {
+        try {
+            const connection = await dbPool.getConnection();
+            try {
+                if (isTyping) {
+                    await connection.execute(
+                        'INSERT INTO typing_indicators (user_handle, conversation_with, is_typing, last_activity) VALUES (?, ?, TRUE, NOW()) ON DUPLICATE KEY UPDATE is_typing = TRUE, last_activity = NOW()',
+                        [userHandle, conversationWith]
+                    );
+                } else {
+                    await connection.execute(
+                        'UPDATE typing_indicators SET is_typing = FALSE, last_activity = NOW() WHERE user_handle = ? AND conversation_with = ?',
+                        [userHandle, conversationWith]
+                    );
+                }
+            } finally {
+                connection.release();
+            }
+        } catch (error) {
+            console.error('[WS] Error updating typing indicator:', error.message);
+        }
+    }
+    
+    // Broadcast to conversation partner
+    const partnerClients = connectedClients.get(conversationWith);
+    if (partnerClients) {
+        const typingMessage = JSON.stringify({
+            type: 'typing',
+            from_user: userHandle,
+            is_typing: isTyping,
+            timestamp: new Date().toISOString()
+        });
+        
+        partnerClients.forEach((partnerWs) => {
+            if (partnerWs.readyState === WebSocket.OPEN) {
+                try {
+                    partnerWs.send(typingMessage);
+                } catch (error) {
+                    console.error('[WS] Error sending typing indicator:', error.message);
+                }
+            }
+        });
+    }
+}
+
+/**
+ * Handle read receipt
+ */
+async function handleReadReceipt(ws, message, userHandle) {
+    const messageId = message.message_id;
+    const fromUser = message.from_user;
+    
+    if (!messageId || !fromUser) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: 'message_id and from_user are required'
+        }));
+        return;
+    }
+    
+    // Update database
+    if (dbPool) {
+        try {
+            const connection = await dbPool.getConnection();
+            try {
+                await connection.execute(
+                    'UPDATE im_messages SET read_at = NOW() WHERE id = ? AND to_user = ? AND from_user = ? AND read_at IS NULL',
+                    [messageId, userHandle, fromUser]
+                );
+            } finally {
+                connection.release();
+            }
+        } catch (error) {
+            console.error('[WS] Error updating read receipt:', error.message);
+        }
+    }
+    
+    // Notify sender
+    const senderClients = connectedClients.get(fromUser);
+    if (senderClients) {
+        const receiptMessage = JSON.stringify({
+            type: 'read_receipt',
+            message_id: messageId,
+            read_by: userHandle,
+            is_read: true,
+            timestamp: new Date().toISOString()
+        });
+        
+        senderClients.forEach((senderWs) => {
+            if (senderWs.readyState === WebSocket.OPEN) {
+                try {
+                    senderWs.send(receiptMessage);
+                } catch (error) {
+                    console.error('[WS] Error sending read receipt:', error.message);
+                }
+            }
+        });
     }
 }
 

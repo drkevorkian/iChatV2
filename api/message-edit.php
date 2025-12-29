@@ -1,0 +1,222 @@
+<?php
+/**
+ * Sentinel Chat Platform - Message Edit/Delete API
+ * 
+ * Handles message editing and deletion operations.
+ * Messages older than 24 hours 5 minutes are permanent.
+ * 
+ * Security: All operations use prepared statements and validate permissions.
+ */
+
+require_once __DIR__ . '/../bootstrap.php';
+
+use iChat\Repositories\MessageRepository;
+use iChat\Repositories\ImRepository;
+use iChat\Services\SecurityService;
+use iChat\Services\AuthService;
+use iChat\Services\AuditService;
+
+header('Content-Type: application/json');
+
+$security = new SecurityService();
+$auth = new AuthService();
+$auditService = new AuditService();
+
+$security->setSecurityHeaders();
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$action = $_GET['action'] ?? '';
+
+// Check authentication
+$currentUser = $auth->getCurrentUser();
+if (!$currentUser) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Authentication required']);
+    exit;
+}
+
+$userHandle = $currentUser['username'];
+$userRole = $currentUser['role'] ?? 'user';
+
+$messageRepo = new MessageRepository();
+$imRepo = new ImRepository();
+
+try {
+    switch ($action) {
+        case 'edit':
+            // Edit a message
+            if ($method !== 'POST') {
+                throw new \InvalidArgumentException('POST method required');
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input');
+            }
+
+            $messageId = (int)($input['message_id'] ?? 0);
+            $messageType = $security->sanitizeInput($input['message_type'] ?? 'room'); // 'room' or 'im'
+            $newContent = $input['new_content'] ?? '';
+            $roomId = $security->sanitizeInput($input['room_id'] ?? '');
+
+            if ($messageId <= 0 || empty($newContent)) {
+                throw new \InvalidArgumentException('Invalid parameters');
+            }
+
+            // Check if message can be edited (not permanent, user owns it or is moderator)
+            $canEdit = false;
+            if ($messageType === 'room') {
+                $canEdit = $messageRepo->canEditMessage($messageId, $userHandle, $userRole);
+            } else {
+                $canEdit = $imRepo->canEditMessage($messageId, $userHandle, $userRole);
+            }
+
+            if (!$canEdit) {
+                http_response_code(403);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Message cannot be edited (permanent or insufficient permissions)',
+                ]);
+                exit;
+            }
+
+            // Encrypt new content (same as original message encryption)
+            $cipherBlob = base64_encode($newContent);
+
+            // Edit the message
+            if ($messageType === 'room') {
+                // MessageRepository::editMessage signature: (messageId, newCipherBlob, editedBy)
+                $success = $messageRepo->editMessage($messageId, $cipherBlob, $userHandle);
+            } else {
+                $success = $imRepo->editMessage($messageId, $userHandle, $cipherBlob);
+            }
+
+            if ($success) {
+                // Log audit event
+                $auditService->logSuccess(
+                    'MESSAGE_EDIT',
+                    $messageType === 'room' ? 'ROOM_MESSAGE' : 'IM_MESSAGE',
+                    (string)$messageId,
+                    [
+                        'message_type' => $messageType,
+                        'room_id' => $roomId,
+                    ]
+                );
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Message edited successfully',
+                ]);
+            } else {
+                throw new \RuntimeException('Failed to edit message');
+            }
+            break;
+
+        case 'delete':
+            // Delete a message
+            if ($method !== 'POST') {
+                throw new \InvalidArgumentException('POST method required');
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input');
+            }
+
+            $messageId = (int)($input['message_id'] ?? 0);
+            $messageType = $security->sanitizeInput($input['message_type'] ?? 'room');
+            $roomId = $security->sanitizeInput($input['room_id'] ?? '');
+
+            if ($messageId <= 0) {
+                throw new \InvalidArgumentException('Invalid message ID');
+            }
+
+            // Check if message can be deleted
+            $canDelete = false;
+            if ($messageType === 'room') {
+                $canDelete = $messageRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+            } else {
+                $canDelete = $imRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+            }
+
+            if (!$canDelete) {
+                http_response_code(403);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Message cannot be deleted (permanent or insufficient permissions)',
+                ]);
+                exit;
+            }
+
+            // Delete the message (soft delete)
+            if ($messageType === 'room') {
+                $success = $messageRepo->deleteMessage($messageId, $userHandle, $userRole === 'moderator' || $userRole === 'administrator');
+            } else {
+                $success = $imRepo->deleteMessage($messageId, $userHandle, $userRole === 'moderator' || $userRole === 'administrator');
+            }
+
+            if ($success) {
+                // Log audit event
+                $auditService->logSuccess(
+                    'MESSAGE_DELETE',
+                    $messageType === 'room' ? 'ROOM_MESSAGE' : 'IM_MESSAGE',
+                    (string)$messageId,
+                    [
+                        'message_type' => $messageType,
+                        'room_id' => $roomId,
+                        'deleted_by_role' => $userRole,
+                    ]
+                );
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Message deleted successfully',
+                ]);
+            } else {
+                throw new \RuntimeException('Failed to delete message');
+            }
+            break;
+
+        case 'check':
+            // Check if a message can be edited/deleted
+            if ($method !== 'GET') {
+                throw new \InvalidArgumentException('GET method required');
+            }
+
+            $messageId = (int)($_GET['message_id'] ?? 0);
+            $messageType = $security->sanitizeInput($_GET['message_type'] ?? 'room');
+
+            if ($messageId <= 0) {
+                throw new \InvalidArgumentException('Invalid message ID');
+            }
+
+            $canEdit = false;
+            $canDelete = false;
+
+            if ($messageType === 'room') {
+                $canEdit = $messageRepo->canEditMessage($messageId, $userHandle, $userRole);
+                $canDelete = $messageRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+            } else {
+                $canEdit = $imRepo->canEditMessage($messageId, $userHandle, $userRole);
+                $canDelete = $imRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+            }
+
+            echo json_encode([
+                'success' => true,
+                'can_edit' => $canEdit,
+                'can_delete' => $canDelete,
+            ]);
+            break;
+
+        default:
+            throw new \InvalidArgumentException('Invalid action: ' . $action);
+    }
+} catch (\Exception $e) {
+    error_log('Message Edit API error: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'An error occurred: ' . $e->getMessage(),
+    ]);
+}
+

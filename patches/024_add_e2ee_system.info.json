@@ -1,0 +1,25 @@
+{
+    "patch_id": 24,
+    "name": "Add End-to-End Encryption (E2EE) System",
+    "description": "Implements libsodium-based E2EE for IM/private messages with key exchange, typing indicators, and read receipts. Users exchange public keys and encrypt messages client-side using libsodium box encryption.",
+    "version": "1.0.0",
+    "author": "Sentinel Chat Platform",
+    "applies_to": "all",
+    "dependencies": ["005_add_authentication_system"],
+    "rollback_safe": false,
+    "files_changed": [
+        "src/Services/E2EEService.php",
+        "src/Repositories/KeyRepository.php",
+        "api/keys.php",
+        "js/e2ee.js",
+        "js/typing-indicators.js"
+    ],
+    "database_changes": [
+        "CREATE TABLE user_keys",
+        "CREATE TABLE key_exchanges",
+        "CREATE TABLE typing_indicators",
+        "ALTER TABLE im_messages ADD encryption_type and nonce columns"
+    ],
+    "scope": "Adds enterprise-grade E2EE using libsodium for IM/private chats. Includes key exchange system, typing indicators via WebSocket, and enhanced read receipts. Messages are encrypted client-side before transmission, ensuring only the recipient can decrypt them."
+}
+

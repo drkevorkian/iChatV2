@@ -1,0 +1,11 @@
+{
+    "patch_id": 25,
+    "name": "Add Message Editing & Deletion Support",
+    "description": "Adds columns for message editing and deletion. Messages older than 24 hours 5 minutes are permanent.",
+    "version": "1.0.0",
+    "author": "Sentinel Chat Platform",
+    "applies_to": "all",
+    "dependencies": ["000_init_patch_system"],
+    "rollback_safe": false
+}
+

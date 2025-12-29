@@ -44,21 +44,41 @@ class MessageRepository
         string $roomId,
         string $senderHandle,
         string $cipherBlob,
-        int $filterVersion
+        int $filterVersion,
+        bool $isHidden = false
     ): string {
         // Check if database is available
         if (DatabaseHealth::isAvailable()) {
             try {
-                $sql = 'INSERT INTO temp_outbox 
-                        (room_id, sender_handle, cipher_blob, filter_version, queued_at) 
-                        VALUES (:room_id, :sender_handle, :cipher_blob, :filter_version, NOW())';
+                // Check if is_hidden column exists
+                $db = Database::getConnection();
+                $columnsCheck = $db->query("SHOW COLUMNS FROM temp_outbox LIKE 'is_hidden'");
+                $hasHiddenColumn = $columnsCheck->rowCount() > 0;
                 
-                Database::execute($sql, [
-                    ':room_id' => $roomId,
-                    ':sender_handle' => $senderHandle,
-                    ':cipher_blob' => $cipherBlob,
-                    ':filter_version' => $filterVersion,
-                ]);
+                if ($hasHiddenColumn) {
+                    $sql = 'INSERT INTO temp_outbox 
+                            (room_id, sender_handle, cipher_blob, filter_version, is_hidden, queued_at) 
+                            VALUES (:room_id, :sender_handle, :cipher_blob, :filter_version, :is_hidden, NOW())';
+                    
+                    Database::execute($sql, [
+                        ':room_id' => $roomId,
+                        ':sender_handle' => $senderHandle,
+                        ':cipher_blob' => $cipherBlob,
+                        ':filter_version' => $filterVersion,
+                        ':is_hidden' => $isHidden ? 1 : 0,
+                    ]);
+                } else {
+                    $sql = 'INSERT INTO temp_outbox 
+                            (room_id, sender_handle, cipher_blob, filter_version, queued_at) 
+                            VALUES (:room_id, :sender_handle, :cipher_blob, :filter_version, NOW())';
+                    
+                    Database::execute($sql, [
+                        ':room_id' => $roomId,
+                        ':sender_handle' => $senderHandle,
+                        ':cipher_blob' => $cipherBlob,
+                        ':filter_version' => $filterVersion,
+                    ]);
+                }
                 
                 return Database::lastInsertId();
             } catch (\Exception $e) {
@@ -333,6 +353,171 @@ class MessageRepository
         }
         
         return $messageId;
+    }
+
+    /**
+     * Check if a message can be edited
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle Current user handle
+     * @param string $userRole Current user role
+     * @return bool True if message can be edited
+     */
+    public function canEditMessage(int $messageId, string $userHandle, string $userRole): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            // Check if columns exist
+            $db = Database::getConnection();
+            $columnsCheck = $db->query("SHOW COLUMNS FROM temp_outbox LIKE 'is_permanent'");
+            $hasPermanent = $columnsCheck->rowCount() > 0;
+
+            if ($hasPermanent) {
+                $sql = 'SELECT sender_handle, is_permanent, queued_at
+                        FROM temp_outbox
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            } else {
+                // Fallback: check age manually
+                $sql = 'SELECT sender_handle, queued_at
+                        FROM temp_outbox
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            }
+
+            $message = Database::queryOne($sql, [':message_id' => $messageId]);
+
+            if (!$message) {
+                return false;
+            }
+
+            // Check if message is permanent
+            if ($hasPermanent && !empty($message['is_permanent'])) {
+                return false;
+            }
+
+            // Check if editing is disabled (100 edits reached)
+            if (!empty($message['edit_disabled'])) {
+                return false;
+            }
+
+            // Check age (24 hours 5 minutes)
+            $queuedAt = strtotime($message['queued_at']);
+            $ageLimit = time() - (24 * 3600 + 5 * 60); // 24 hours 5 minutes
+            if ($queuedAt < $ageLimit) {
+                return false;
+            }
+
+            // User must own the message, or be moderator/admin
+            return ($message['sender_handle'] === $userHandle) || 
+                   in_array($userRole, ['moderator', 'administrator', 'owner'], true);
+        } catch (\Exception $e) {
+            error_log('CanEditMessage failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Check if a message can be deleted
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle Current user handle
+     * @param string $userRole Current user role
+     * @return bool True if message can be deleted
+     */
+    public function canDeleteMessage(int $messageId, string $userHandle, string $userRole): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            // Check if columns exist
+            $db = Database::getConnection();
+            $columnsCheck = $db->query("SHOW COLUMNS FROM temp_outbox LIKE 'is_permanent'");
+            $hasPermanent = $columnsCheck->rowCount() > 0;
+
+            if ($hasPermanent) {
+                $sql = 'SELECT sender_handle, is_permanent, queued_at
+                        FROM temp_outbox
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            } else {
+                $sql = 'SELECT sender_handle, queued_at
+                        FROM temp_outbox
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            }
+
+            $message = Database::queryOne($sql, [':message_id' => $messageId]);
+
+            if (!$message) {
+                return false;
+            }
+
+            // Check if message is permanent
+            if ($hasPermanent && !empty($message['is_permanent'])) {
+                return false;
+            }
+
+            // Check age (24 hours 5 minutes)
+            $queuedAt = strtotime($message['queued_at']);
+            $ageLimit = time() - (24 * 3600 + 5 * 60);
+            if ($queuedAt < $ageLimit) {
+                return false;
+            }
+
+            // User must own the message, or be moderator/admin (moderators can delete any message)
+            // Note: Deleted messages are kept in DB forever (soft delete)
+            return ($message['sender_handle'] === $userHandle) || 
+                   in_array($userRole, ['moderator', 'administrator', 'owner'], true);
+        } catch (\Exception $e) {
+            error_log('CanDeleteMessage failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+
+    /**
+     * Delete a message (soft delete)
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle User deleting the message
+     * @param bool $isModerator Whether user is moderator/admin
+     * @return bool True on success
+     */
+    public function deleteMessage(int $messageId, string $userHandle, bool $isModerator = false): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            $sql = 'UPDATE temp_outbox
+                    SET deleted_at = NOW()
+                    WHERE id = :message_id
+                      AND deleted_at IS NULL';
+
+            // If not moderator, ensure user owns the message
+            if (!$isModerator) {
+                $sql .= ' AND sender_handle = :user_handle';
+                return Database::execute($sql, [
+                    ':message_id' => $messageId,
+                    ':user_handle' => $userHandle,
+                ]) > 0;
+            } else {
+                // Moderators can delete any message
+                return Database::execute($sql, [
+                    ':message_id' => $messageId,
+                ]) > 0;
+            }
+        } catch (\Exception $e) {
+            error_log('DeleteMessage failed: ' . $e->getMessage());
+            return false;
+        }
     }
 }
 

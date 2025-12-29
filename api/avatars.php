@@ -53,11 +53,22 @@ try {
                 throw new \InvalidArgumentException('POST method required for upload');
             }
             
-            if (empty($_FILES['image'])) {
-                throw new \InvalidArgumentException('No image file uploaded');
-            }
+            // Debug: Log what we received
+            error_log('Avatars upload - FILES: ' . json_encode(array_keys($_FILES)));
+            error_log('Avatars upload - POST: ' . json_encode(array_keys($_POST)));
             
-            $file = $_FILES['image'];
+            if (empty($_FILES['image'])) {
+                // Check if file is in a different key
+                $fileKeys = array_keys($_FILES);
+                if (!empty($fileKeys)) {
+                    error_log('Available file keys: ' . json_encode($fileKeys));
+                    $file = $_FILES[$fileKeys[0]]; // Use first available file
+                } else {
+                    throw new \InvalidArgumentException('No image file uploaded. $_FILES is empty.');
+                }
+            } else {
+                $file = $_FILES['image'];
+            }
             $maxFileSize = 5 * 1024 * 1024; // 5MB
             $allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
             

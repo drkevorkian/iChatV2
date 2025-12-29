@@ -76,10 +76,22 @@ $_SERVER['REQUEST_METHOD'] = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // For POST requests, handle multipart/form-data (file uploads) specially
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Check if this is a multipart/form-data request (file upload)
-    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-    if (strpos($contentType, 'multipart/form-data') !== false) {
+    // Check all possible Content-Type header locations
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+    
+    // Also check getAllHeaders() for Content-Type
+    $headers = getallheaders();
+    if (empty($contentType) && isset($headers['Content-Type'])) {
+        $contentType = $headers['Content-Type'];
+    }
+    
+    $hasFiles = !empty($_FILES);
+    
+    if (strpos($contentType, 'multipart/form-data') !== false || $hasFiles) {
         // For multipart/form-data, $_FILES and $_POST are already populated by PHP
         // No need to read php://input - it's already parsed
+        // PHP automatically populates $_FILES for multipart/form-data
+        error_log('Proxy: Detected file upload - Content-Type: ' . $contentType . ', Files: ' . count($_FILES));
     } else {
         // For JSON or other POST data, read and store input
         $input = file_get_contents('php://input');

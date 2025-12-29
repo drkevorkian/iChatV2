@@ -11,6 +11,7 @@ require_once __DIR__ . '/../bootstrap.php';
 
 use iChat\Services\AuthService;
 use iChat\Services\SecurityService;
+use iChat\Services\AuditService;
 
 header('Content-Type: application/json');
 
@@ -21,6 +22,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? '';
 
 $authService = new AuthService();
+$auditService = new AuditService();
 
 try {
     switch ($action) {
@@ -70,6 +72,15 @@ try {
             
             $result = $authService->login($username, $password);
             
+            // Log audit event
+            if ($result['success']) {
+                $userId = $result['user']['id'] ?? null;
+                $auditService->logLogin($username, $userId, true);
+            } else {
+                // Log failed login attempt
+                $auditService->logFailedLogin($username, $result['error'] ?? 'Invalid credentials');
+            }
+            
             if ($result['success']) {
                 echo json_encode($result);
             } else {
@@ -98,7 +109,17 @@ try {
                 exit;
             }
             
+            // Get user info before logout (for audit logging)
+            $user = $authService->getCurrentUser();
+            $userHandle = $user['username'] ?? 'unknown';
+            $userId = $user['id'] ?? null;
+            
             $success = $authService->logout($sessionToken);
+            
+            // Log audit event
+            if ($success && !empty($userHandle)) {
+                $auditService->logLogout($userHandle, $userId);
+            }
             
             // Clear PHP session
             session_destroy();

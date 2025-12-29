@@ -731,6 +731,9 @@ $defaultRoom = $config->get('ui.default_room');
                     <button class="admin-category-btn" data-category="escrow">
                         <i class="fas fa-lock"></i> Escrow
                     </button>
+                    <button class="admin-category-btn" data-category="ai-systems">
+                        <i class="fas fa-robot"></i> AI Systems
+                    </button>
                 </div>
                 
                 <!-- Sub-Tabs (Second Row) - Shown when category is selected -->
@@ -770,6 +773,25 @@ $defaultRoom = $config->get('ui.default_room');
                         <button class="admin-subtab-btn" data-tab="room-requests">
                             <i class="fas fa-door-open"></i> Room Requests
                             <span class="admin-tab-badge" id="badge-room-requests" style="display: none;">0</span>
+                        </button>
+                    </div>
+                    
+                    <!-- AI Systems Sub-Tabs -->
+                    <div class="admin-subtab-group" data-category="ai-systems" style="display: none;">
+                        <button class="admin-subtab-btn active" data-tab="ai-config">
+                            <i class="fas fa-cog"></i> Configuration
+                        </button>
+                        <button class="admin-subtab-btn" data-tab="ai-moderation">
+                            <i class="fas fa-shield-alt"></i> Auto-Moderation
+                        </button>
+                        <button class="admin-subtab-btn" data-tab="ai-smart-replies">
+                            <i class="fas fa-lightbulb"></i> Smart Replies
+                        </button>
+                        <button class="admin-subtab-btn" data-tab="ai-summarization">
+                            <i class="fas fa-compress"></i> Summarization
+                        </button>
+                        <button class="admin-subtab-btn" data-tab="ai-bot">
+                            <i class="fas fa-comments"></i> Bot Features
                         </button>
                     </div>
                 </div>
@@ -1139,6 +1161,86 @@ $defaultRoom = $config->get('ui.default_room');
                                 <div class="modal-footer" id="file-storage-modal-footer">
                                     <button class="btn-secondary" id="file-storage-modal-cancel">Cancel</button>
                                     <button class="btn-primary" id="file-storage-modal-save" style="display: none;">Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Systems Tabs -->
+                    <!-- AI Configuration Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-ai-config">
+                        <div class="ai-systems-section">
+                            <h3><i class="fas fa-cog"></i> AI Systems Configuration</h3>
+                            <p class="section-description">Configure AI providers, models, and settings for all AI-powered features.</p>
+                            <div id="ai-systems-config-list" class="ai-config-list"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Auto-Moderation Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-ai-moderation">
+                        <div class="ai-systems-section">
+                            <h3><i class="fas fa-shield-alt"></i> AI Auto-Moderation</h3>
+                            <p class="section-description">View moderation logs and test AI moderation functionality.</p>
+                            <div class="moderation-controls" style="margin-bottom: 1.5rem;">
+                                <button id="test-moderation-btn" class="btn-primary">
+                                    <i class="fas fa-vial"></i> Test Moderation
+                                </button>
+                                <button id="refresh-moderation-logs-btn" class="btn-secondary">
+                                    <i class="fas fa-sync"></i> Refresh Logs
+                                </button>
+                                <select id="moderation-action-filter" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; margin-left: 1rem;">
+                                    <option value="">All Actions</option>
+                                    <option value="flag">Flag</option>
+                                    <option value="warn">Warn</option>
+                                    <option value="hide">Hide</option>
+                                    <option value="delete">Delete</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </div>
+                            <div id="moderation-logs-list" class="moderation-logs-list"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Smart Replies Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-ai-smart-replies">
+                        <div class="ai-systems-section">
+                            <h3><i class="fas fa-lightbulb"></i> Smart Replies</h3>
+                            <p class="section-description">Configure AI-powered reply suggestions for conversations.</p>
+                            <div id="smart-replies-config" class="ai-config-content">
+                                <div class="loading-messages">Loading configuration...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Summarization Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-ai-summarization">
+                        <div class="ai-systems-section">
+                            <h3><i class="fas fa-compress"></i> Thread Summarization</h3>
+                            <p class="section-description">Configure AI-powered thread summarization for long conversations.</p>
+                            <div id="summarization-config" class="ai-config-content">
+                                <div class="loading-messages">Loading configuration...</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Bot Features Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-ai-bot">
+                        <div class="ai-systems-section">
+                            <h3><i class="fas fa-comments"></i> Bot Features</h3>
+                            <p class="section-description">Manage AI bot features including reminders and polls.</p>
+                            <div id="bot-config" class="ai-config-content">
+                                <div class="loading-messages">Loading configuration...</div>
+                            </div>
+                            <div style="margin-top: 2rem;">
+                                <h4><i class="fas fa-bell"></i> Active Reminders</h4>
+                                <div id="bot-reminders-list" class="bot-list">
+                                    <div class="loading-messages">Loading reminders...</div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 2rem;">
+                                <h4><i class="fas fa-poll"></i> Active Polls</h4>
+                                <div id="bot-polls-list" class="bot-list">
+                                    <div class="loading-messages">Loading polls...</div>
                                 </div>
                             </div>
                         </div>
@@ -1553,6 +1655,16 @@ $defaultRoom = $config->get('ui.default_room');
             }
         };
     </script>
+    <!-- E2EE and Real-time Features -->
+    <script src="https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.11/dist/browsers/sodium.min.js"></script>
+    <script src="/iChat/js/e2ee.js"></script>
+    <script src="/iChat/js/typing-indicators.js"></script>
+    <script src="/iChat/js/read-receipts.js"></script>
+    <script src="/iChat/js/key-exchange-ui.js"></script>
+    <script src="/iChat/js/icon-picker.js"></script>
+    <script src="/iChat/js/message-edit.js"></script>
+    <script src="/iChat/js/rich-previews.js"></script>
+    <script src="/iChat/js/ai-systems-admin.js"></script>
     <script src="/iChat/js/app.js"></script>
 </body>
 </html>

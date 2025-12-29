@@ -1508,28 +1508,28 @@ function stopPythonServer(string $pidFile): array {
  * Fetch Python server stats
  */
 function fetchPythonServerStats(string $host, int $port): ?array {
-    $oldErrorReporting = error_reporting(0);
-    $connection = fsockopen($host, $port, $errno, $errstr, 0.05);
-    error_reporting($oldErrorReporting);
-    
-    if (!$connection) {
-        return null;
-    }
-    fclose($connection);
-    
+    // Skip the fsockopen test - it's unreliable and generates warnings
+    // Just try to fetch the stats directly
     $url = "http://{$host}:{$port}/stats";
     $context = stream_context_create([
         'http' => [
-            'timeout' => 0.5,
+            'timeout' => 1.0, // Increased timeout slightly
             'method' => 'GET',
             'header' => 'Connection: close\r\n',
             'ignore_errors' => true
         ]
     ]);
     
+    // Suppress all warnings/errors for this operation
     $oldErrorReporting = error_reporting(0);
-    $response = file_get_contents($url, false, $context);
+    $oldDisplayErrors = ini_get('display_errors');
+    ini_set('display_errors', '0');
+    
+    $response = @file_get_contents($url, false, $context);
+    
+    // Restore error reporting
     error_reporting($oldErrorReporting);
+    ini_set('display_errors', $oldDisplayErrors);
     
     if ($response === false || empty($response)) {
         return null;

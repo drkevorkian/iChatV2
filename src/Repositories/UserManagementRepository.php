@@ -568,7 +568,8 @@ class UserManagementRepository
             // Simplified query - get registered users first without ban/mute checks
             // Use subquery to get most recent presence per user to avoid duplicates
             try {
-                $sql = "SELECT DISTINCT
+                // First, get all users - this ensures we get every user regardless of presence
+                $sql = "SELECT 
                             u.id,
                             u.username AS user_handle,
                             u.email,
@@ -580,30 +581,100 @@ class UserManagementRepository
                             um.display_name,
                             um.avatar_url,
                             um.avatar_data,
-                            rp.room_id AS current_room,
-                            rp.last_seen,
-                            rp.ip_address,
-                            rp.session_id,
-                            us.user_agent,
+                            NULL AS current_room,
+                            NULL AS last_seen,
+                            NULL AS ip_address,
+                            NULL AS session_id,
+                            NULL AS user_agent,
                             0 AS is_banned,
                             0 AS is_muted
                         FROM users u
                         LEFT JOIN user_metadata um ON u.username = um.user_handle
-                        LEFT JOIN (
-                            SELECT rp1.user_handle, rp1.room_id, rp1.last_seen, rp1.ip_address, rp1.session_id
-                            FROM room_presence rp1
-                            INNER JOIN (
-                                SELECT user_handle, MAX(last_seen) AS max_last_seen
-                                FROM room_presence
-                                WHERE last_seen > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-                                GROUP BY user_handle
-                            ) rp2 ON rp1.user_handle = rp2.user_handle AND rp1.last_seen = rp2.max_last_seen
-                        ) rp ON u.username = rp.user_handle
-                        LEFT JOIN user_sessions us ON rp.session_id = us.session_id
                         ORDER BY u.created_at DESC";
                 
-                $registeredUsers = Database::query($sql);
-                error_log('UserManagementRepository::getAllUsers - Found ' . count($registeredUsers) . ' registered users');
+                $allUsersFromDb = Database::query($sql);
+                error_log('UserManagementRepository::getAllUsers - Raw query returned ' . count($allUsersFromDb) . ' users');
+                
+                // Now get presence data separately and merge it
+                $presenceData = [];
+                if (!empty($allUsersFromDb)) {
+                    $userHandles = array_map(function($u) { return $u['user_handle']; }, $allUsersFromDb);
+                    $placeholders = implode(',', array_fill(0, count($userHandles), '?'));
+                    
+                    $presenceSql = "SELECT 
+                                        rp1.user_handle, 
+                                        rp1.room_id, 
+                                        rp1.last_seen, 
+                                        rp1.ip_address, 
+                                        rp1.session_id
+                                    FROM room_presence rp1
+                                    INNER JOIN (
+                                        SELECT user_handle, MAX(last_seen) AS max_last_seen
+                                        FROM room_presence
+                                        WHERE last_seen > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+                                          AND user_handle IN ($placeholders)
+                                        GROUP BY user_handle
+                                    ) rp2 ON rp1.user_handle = rp2.user_handle AND rp1.last_seen = rp2.max_last_seen
+                                    GROUP BY rp1.user_handle";
+                    
+                    $presenceRows = Database::query($presenceSql, $userHandles);
+                    foreach ($presenceRows as $presence) {
+                        $presenceData[$presence['user_handle']] = $presence;
+                    }
+                    
+                    // Get session data for users with presence
+                    if (!empty($presenceRows)) {
+                        $sessionIds = array_filter(array_map(function($p) { return $p['session_id'] ?? null; }, $presenceRows));
+                        if (!empty($sessionIds)) {
+                            $sessionPlaceholders = implode(',', array_fill(0, count($sessionIds), '?'));
+                            $sessionSql = "SELECT session_id, user_agent FROM user_sessions WHERE session_id IN ($sessionPlaceholders)";
+                            $sessionRows = Database::query($sessionSql, array_values($sessionIds));
+                            $sessionData = [];
+                            foreach ($sessionRows as $session) {
+                                $sessionData[$session['session_id']] = $session;
+                            }
+                            
+                            // Merge session data into presence data
+                            foreach ($presenceData as $handle => &$presence) {
+                                if (!empty($presence['session_id']) && isset($sessionData[$presence['session_id']])) {
+                                    $presence['user_agent'] = $sessionData[$presence['session_id']]['user_agent'];
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Merge presence data into user data
+                $registeredUsers = [];
+                $userIdsSeen = []; // Track IDs to prevent duplicates
+                foreach ($allUsersFromDb as $user) {
+                    $userId = $user['id'] ?? null;
+                    $handle = $user['user_handle'] ?? '';
+                    
+                    // Skip if we've already processed this user ID (prevent duplicates from query)
+                    if ($userId !== null && isset($userIdsSeen[$userId])) {
+                        error_log("UserManagementRepository::getAllUsers - Skipping duplicate user ID in raw query results: {$userId} ({$handle})");
+                        continue;
+                    }
+                    
+                    $userIdsSeen[$userId] = true;
+                    
+                    if (isset($presenceData[$handle])) {
+                        $presence = $presenceData[$handle];
+                        $user['current_room'] = $presence['room_id'];
+                        $user['last_seen'] = $presence['last_seen'];
+                        $user['ip_address'] = $presence['ip_address'];
+                        $user['session_id'] = $presence['session_id'];
+                        $user['user_agent'] = $presence['user_agent'] ?? null;
+                    }
+                    $registeredUsers[] = $user;
+                }
+                
+                error_log('UserManagementRepository::getAllUsers - Found ' . count($registeredUsers) . ' registered users after merging presence data');
+                // Debug: Log user IDs and handles
+                foreach ($registeredUsers as $idx => $user) {
+                    error_log("UserManagementRepository::getAllUsers - User[$idx]: ID=" . ($user['id'] ?? 'NULL') . ', Handle=' . ($user['user_handle'] ?? 'NULL'));
+                }
                 
                 // Try to add ban/mute status if tables exist
                 if (!empty($registeredUsers)) {
@@ -639,6 +710,7 @@ class UserManagementRepository
                                     }
                                 }
                             }
+                            unset($user); // Important: unset reference to prevent issues
                         }
                     } catch (\Exception $e) {
                         error_log('Error checking ban/mute status: ' . $e->getMessage());
@@ -652,8 +724,9 @@ class UserManagementRepository
             }
             
             // Get guest users from room_presence (users not in users table)
+            // Use subquery to get most recent presence per guest to avoid duplicates
             try {
-                $sql = "SELECT DISTINCT
+                $sql = "SELECT 
                             rp.user_handle,
                             rp.room_id AS current_room,
                             rp.last_seen,
@@ -662,11 +735,20 @@ class UserManagementRepository
                             us.user_agent,
                             0 AS is_banned,
                             0 AS is_muted
-                        FROM room_presence rp
+                        FROM (
+                            SELECT rp1.user_handle, rp1.room_id, rp1.last_seen, rp1.ip_address, rp1.session_id
+                            FROM room_presence rp1
+                            INNER JOIN (
+                                SELECT user_handle, MAX(last_seen) AS max_last_seen
+                                FROM room_presence
+                                WHERE last_seen > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                                GROUP BY user_handle
+                            ) rp2 ON rp1.user_handle = rp2.user_handle AND rp1.last_seen = rp2.max_last_seen
+                            GROUP BY rp1.user_handle
+                        ) rp
                         LEFT JOIN users u ON rp.user_handle = u.username
                         LEFT JOIN user_sessions us ON rp.session_id = us.session_id
                         WHERE u.id IS NULL
-                          AND rp.last_seen > DATE_SUB(NOW(), INTERVAL 24 HOUR)
                         ORDER BY rp.last_seen DESC";
                 
                 $guestUsers = Database::query($sql);
@@ -706,6 +788,7 @@ class UserManagementRepository
                                     }
                                 }
                             }
+                            unset($guest); // Important: unset reference to prevent issues
                         }
                     } catch (\Exception $e) {
                         error_log('Error checking ban/mute status for guests: ' . $e->getMessage());
@@ -726,12 +809,36 @@ class UserManagementRepository
         
         // Combine and format
         $allUsers = [];
+        $seenUserIds = []; // Track users we've already added to prevent duplicates
         
         // Add registered users
-        foreach ($registeredUsers as $user) {
+        error_log('UserManagementRepository::getAllUsers - Processing ' . count($registeredUsers) . ' registered users for final array');
+        foreach ($registeredUsers as $idx => $user) {
+            $userId = $user['id'] ?? null;
+            $userHandle = $user['user_handle'] ?? '';
+            
+            error_log("UserManagementRepository::getAllUsers - Processing registered user[$idx]: ID={$userId}, Handle={$userHandle}");
+            
+            // Skip if we've already added this user by ID (prevent duplicates)
+            // Only check by ID, not by handle, since handles should be unique anyway
+            if ($userId !== null && isset($seenUserIds['id_' . $userId])) {
+                error_log("UserManagementRepository::getAllUsers - Skipping duplicate user ID: {$userId} ({$userHandle})");
+                continue;
+            }
+            
+            // Mark as seen by both ID and handle
+            if ($userId !== null) {
+                $seenUserIds['id_' . $userId] = true;
+            }
+            if (!empty($userHandle)) {
+                $seenUserIds['handle_' . $userHandle] = true;
+            }
+            
+            error_log("UserManagementRepository::getAllUsers - Adding user: ID={$userId}, Handle={$userHandle}");
+            
             $allUsers[] = [
-                'id' => $user['id'],
-                'user_handle' => $user['user_handle'],
+                'id' => $userId,
+                'user_handle' => $userHandle,
                 'email' => $user['email'],
                 'role' => $user['role'],
                 'is_active' => (bool)($user['is_active'] ?? true),
@@ -753,11 +860,26 @@ class UserManagementRepository
             ];
         }
         
-        // Add guest users
+        error_log('UserManagementRepository::getAllUsers - Total users after processing: ' . count($allUsers));
+        
+        // Add guest users (skip if already added as registered user)
         foreach ($guestUsers as $guest) {
+            $guestHandle = $guest['user_handle'] ?? '';
+            
+            // Skip if we've already added this user as a registered user (check by handle)
+            if (!empty($guestHandle) && isset($seenUserIds['handle_' . $guestHandle])) {
+                error_log("Skipping guest user that's already registered: {$guestHandle}");
+                continue;
+            }
+            
+            // Mark as seen by handle
+            if (!empty($guestHandle)) {
+                $seenUserIds['handle_' . $guestHandle] = true;
+            }
+            
             $allUsers[] = [
                 'id' => null,
-                'user_handle' => $guest['user_handle'],
+                'user_handle' => $guestHandle,
                 'email' => null,
                 'role' => 'guest',
                 'is_active' => true,

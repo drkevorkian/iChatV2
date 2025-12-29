@@ -6,7 +6,7 @@ Typing Indicators + Read Receipts
 Classic "user is typing…" and ✓✓ read markers. Super easy with WebSockets (broadcast events on keypress/focus). Makes conversations feel alive and responsive.
 Message Reactions (Emoji Quick-Replies)
 Let users react with 👍 ❤️ 😂 etc. without full replies. Very popular in every major app. Store reactions in DB and push via WS.
-Message Editing & Deletion (with Timestamps)
+Message Editing & Deletion (with Timestamps) but only before a 24 hour period, messages sent 24 hours 5 minutes ago are permenent. 
 Allow editing/deleting own messages within a time window (e.g., 5–15 min). Show "edited" label and original timestamp. Moderators could have global delete.
 Rich Message Previews (Links, YouTube, Images)
 Auto-embed previews for URLs (Open Graph metadata fetch), YouTube thumbnails/embeds, image previews. Your current media upload is great — extend to inline rich content.

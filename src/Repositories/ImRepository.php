@@ -37,29 +37,55 @@ class ImRepository
      * @param string $fromUser Sender's handle
      * @param string $toUser Recipient's handle
      * @param string $cipherBlob Encrypted message data
+     * @param string $encryptionType Type of encryption ('none' or 'e2ee')
+     * @param string|null $nonce Nonce for E2EE messages
      * @return string IM ID or file identifier
      */
     public function sendIm(
         string $fromUser,
         string $toUser,
-        string $cipherBlob
+        string $cipherBlob,
+        string $encryptionType = 'none',
+        ?string $nonce = null
     ): string {
         // Check if database is available
         if (DatabaseHealth::isAvailable()) {
             try {
-                // Use 'conversation' as folder for conversation-based system
-                // This maintains backward compatibility with existing schema
-                $sql = 'INSERT INTO im_messages 
-                        (from_user, to_user, folder, status, cipher_blob, queued_at) 
-                        VALUES (:from_user, :to_user, :folder, :status, :cipher_blob, NOW())';
+                // Check if encryption_type and nonce columns exist
+                $db = Database::getConnection();
+                $columnsCheck = $db->query("SHOW COLUMNS FROM im_messages LIKE 'encryption_type'");
+                $hasEncryptionType = $columnsCheck->rowCount() > 0;
                 
-                Database::execute($sql, [
-                    ':from_user' => $fromUser,
-                    ':to_user' => $toUser,
-                    ':folder' => 'conversation', // Single entry for conversation
-                    ':status' => 'sent', // Mark as sent immediately (no queuing needed)
-                    ':cipher_blob' => $cipherBlob,
-                ]);
+                if ($hasEncryptionType) {
+                    // Use 'conversation' as folder for conversation-based system
+                    // This maintains backward compatibility with existing schema
+                    $sql = 'INSERT INTO im_messages 
+                            (from_user, to_user, folder, status, cipher_blob, encryption_type, nonce, queued_at) 
+                            VALUES (:from_user, :to_user, :folder, :status, :cipher_blob, :encryption_type, :nonce, NOW())';
+                    
+                    Database::execute($sql, [
+                        ':from_user' => $fromUser,
+                        ':to_user' => $toUser,
+                        ':folder' => 'conversation', // Single entry for conversation
+                        ':status' => 'sent', // Mark as sent immediately (no queuing needed)
+                        ':cipher_blob' => $cipherBlob,
+                        ':encryption_type' => $encryptionType,
+                        ':nonce' => $nonce,
+                    ]);
+                } else {
+                    // Fallback for older schema
+                    $sql = 'INSERT INTO im_messages 
+                            (from_user, to_user, folder, status, cipher_blob, queued_at) 
+                            VALUES (:from_user, :to_user, :folder, :status, :cipher_blob, NOW())';
+                    
+                    Database::execute($sql, [
+                        ':from_user' => $fromUser,
+                        ':to_user' => $toUser,
+                        ':folder' => 'conversation',
+                        ':status' => 'sent',
+                        ':cipher_blob' => $cipherBlob,
+                    ]);
+                }
                 
                 return (string)Database::lastInsertId();
             } catch (\Exception $e) {
@@ -101,14 +127,30 @@ class ImRepository
         // Get messages from database if available
         if (DatabaseHealth::isAvailable()) {
             try {
-                $sql = 'SELECT id, from_user, to_user, folder, status, 
-                               cipher_blob, queued_at, sent_at, read_at
-                        FROM im_messages
-                        WHERE to_user = :user_handle 
-                          AND folder = :folder
-                          AND deleted_at IS NULL
-                        ORDER BY queued_at DESC
-                        LIMIT ' . (string)$limit;
+                // Check if encryption_type column exists
+                $db = Database::getConnection();
+                $columnsCheck = $db->query("SHOW COLUMNS FROM im_messages LIKE 'encryption_type'");
+                $hasEncryptionType = $columnsCheck->rowCount() > 0;
+                
+                if ($hasEncryptionType) {
+                    $sql = 'SELECT id, from_user, to_user, folder, status, 
+                                   cipher_blob, encryption_type, nonce, queued_at, sent_at, read_at
+                            FROM im_messages
+                            WHERE to_user = :user_handle 
+                              AND folder = :folder
+                              AND deleted_at IS NULL
+                            ORDER BY queued_at DESC
+                            LIMIT ' . (string)$limit;
+                } else {
+                    $sql = 'SELECT id, from_user, to_user, folder, status, 
+                                   cipher_blob, queued_at, sent_at, read_at
+                            FROM im_messages
+                            WHERE to_user = :user_handle 
+                              AND folder = :folder
+                              AND deleted_at IS NULL
+                            ORDER BY queued_at DESC
+                            LIMIT ' . (string)$limit;
+                }
                 
                 $dbMessages = Database::query($sql, [
                     ':user_handle' => $userHandle,
@@ -229,14 +271,30 @@ class ImRepository
         }
         
         try {
-            $sql = 'SELECT id, from_user, to_user, folder, status,
-                           cipher_blob, queued_at, sent_at, read_at
-                    FROM im_messages
-                    WHERE ((from_user = :user_handle AND to_user = :other_user)
-                       OR (from_user = :other_user AND to_user = :user_handle))
-                      AND deleted_at IS NULL
-                    ORDER BY queued_at ASC
-                    LIMIT ' . (string)$limit;
+            // Check if encryption_type column exists
+            $db = Database::getConnection();
+            $columnsCheck = $db->query("SHOW COLUMNS FROM im_messages LIKE 'encryption_type'");
+            $hasEncryptionType = $columnsCheck->rowCount() > 0;
+            
+            if ($hasEncryptionType) {
+                $sql = 'SELECT id, from_user, to_user, folder, status,
+                               cipher_blob, encryption_type, nonce, queued_at, sent_at, read_at
+                        FROM im_messages
+                        WHERE ((from_user = :user_handle AND to_user = :other_user)
+                           OR (from_user = :other_user AND to_user = :user_handle))
+                          AND deleted_at IS NULL
+                        ORDER BY queued_at ASC
+                        LIMIT ' . (string)$limit;
+            } else {
+                $sql = 'SELECT id, from_user, to_user, folder, status,
+                               cipher_blob, queued_at, sent_at, read_at
+                        FROM im_messages
+                        WHERE ((from_user = :user_handle AND to_user = :other_user)
+                           OR (from_user = :other_user AND to_user = :user_handle))
+                          AND deleted_at IS NULL
+                        ORDER BY queued_at ASC
+                        LIMIT ' . (string)$limit;
+            }
             
             return Database::query($sql, [
                 ':user_handle' => $userHandle,
@@ -306,6 +364,39 @@ class ImRepository
             ':id' => $imId,
             ':user_handle' => $userHandle,
         ]) > 0;
+    }
+
+    /**
+     * Mark a specific message as read
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle Current user (recipient)
+     * @param string $fromUser Sender user handle
+     * @return bool True on success
+     */
+    public function markMessageAsRead(int $messageId, string $userHandle, string $fromUser): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            $sql = 'UPDATE im_messages
+                    SET read_at = NOW()
+                    WHERE id = :message_id
+                      AND to_user = :user_handle
+                      AND from_user = :from_user
+                      AND read_at IS NULL';
+
+            return Database::execute($sql, [
+                ':message_id' => $messageId,
+                ':user_handle' => $userHandle,
+                ':from_user' => $fromUser,
+            ]) > 0;
+        } catch (\Exception $e) {
+            error_log('Mark message as read failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -437,6 +528,256 @@ class ImRepository
             ':id' => $imId,
             ':user_handle' => $userHandle,
         ]) > 0;
+    }
+
+    /**
+     * Check if a message can be edited
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle Current user handle
+     * @param string $userRole Current user role
+     * @return bool True if message can be edited
+     */
+    public function canEditMessage(int $messageId, string $userHandle, string $userRole): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            // Check if columns exist
+            $db = Database::getConnection();
+            $columnsCheck = $db->query("SHOW COLUMNS FROM im_messages LIKE 'is_permanent'");
+            $hasPermanent = $columnsCheck->rowCount() > 0;
+
+            if ($hasPermanent) {
+                $sql = 'SELECT from_user, is_permanent, edit_disabled, queued_at
+                        FROM im_messages
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            } else {
+                $sql = 'SELECT from_user, edit_disabled, queued_at
+                        FROM im_messages
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            }
+
+            $message = Database::queryOne($sql, [':message_id' => $messageId]);
+
+            if (!$message) {
+                return false;
+            }
+
+            // Check if message is permanent
+            if ($hasPermanent && !empty($message['is_permanent'])) {
+                return false;
+            }
+
+            // Check if editing is disabled (100 edits reached)
+            if (!empty($message['edit_disabled'])) {
+                return false;
+            }
+
+            // Check age (24 hours 5 minutes)
+            $queuedAt = strtotime($message['queued_at']);
+            $ageLimit = time() - (24 * 3600 + 5 * 60);
+            if ($queuedAt < $ageLimit) {
+                return false;
+            }
+
+            // User must own the message, or be moderator/admin
+            return ($message['from_user'] === $userHandle) || 
+                   in_array($userRole, ['moderator', 'administrator', 'owner'], true);
+        } catch (\Exception $e) {
+            error_log('CanEditMessage (IM) failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Check if a message can be deleted
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle Current user handle
+     * @param string $userRole Current user role
+     * @return bool True if message can be deleted
+     */
+    public function canDeleteMessage(int $messageId, string $userHandle, string $userRole): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            // Check if columns exist
+            $db = Database::getConnection();
+            $columnsCheck = $db->query("SHOW COLUMNS FROM im_messages LIKE 'is_permanent'");
+            $hasPermanent = $columnsCheck->rowCount() > 0;
+
+            if ($hasPermanent) {
+                $sql = 'SELECT from_user, is_permanent, queued_at
+                        FROM im_messages
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            } else {
+                $sql = 'SELECT from_user, queued_at
+                        FROM im_messages
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+            }
+
+            $message = Database::queryOne($sql, [':message_id' => $messageId]);
+
+            if (!$message) {
+                return false;
+            }
+
+            // Check if message is permanent
+            if ($hasPermanent && !empty($message['is_permanent'])) {
+                return false;
+            }
+
+            // Check age (24 hours 5 minutes)
+            $queuedAt = strtotime($message['queued_at']);
+            $ageLimit = time() - (24 * 3600 + 5 * 60);
+            if ($queuedAt < $ageLimit) {
+                return false;
+            }
+
+            // User must own the message, or be moderator/admin
+            // Note: Deleted messages are kept in DB forever (soft delete)
+            return ($message['from_user'] === $userHandle) || 
+                   in_array($userRole, ['moderator', 'administrator', 'owner'], true);
+        } catch (\Exception $e) {
+            error_log('CanDeleteMessage (IM) failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Edit a message
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle User editing the message
+     * @param string $newCipherBlob New encrypted content
+     * @return bool True on success
+     */
+    public function editMessage(int $messageId, string $userHandle, string $newCipherBlob): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            // Get current message content and edit count
+            $current = Database::queryOne(
+                'SELECT cipher_blob, edit_count, edit_disabled FROM im_messages WHERE id = :id AND deleted_at IS NULL',
+                [':id' => $messageId]
+            );
+
+            if (!$current) {
+                return false;
+            }
+
+            // Check if editing is disabled (100 edits reached)
+            if (!empty($current['edit_disabled'])) {
+                error_log("EditMessage (IM): Message {$messageId} has reached 100 edits and editing is disabled");
+                return false;
+            }
+
+            $currentEditCount = (int)($current['edit_count'] ?? 0);
+            $newEditCount = $currentEditCount + 1;
+
+            // Archive the current version before updating
+            $archiveRepo = new \iChat\Repositories\MessageEditArchiveRepository();
+            $archiveRepo->archiveMessage(
+                $messageId,
+                'im',
+                $current['cipher_blob'],
+                $userHandle,
+                $newEditCount
+            );
+
+            // Check if we've reached 100 edits
+            $editDisabled = ($newEditCount >= 100);
+
+            // Check if columns exist
+            $db = Database::getConnection();
+            $columnsCheck = $db->query("SHOW COLUMNS FROM im_messages LIKE 'edited_at'");
+            $hasEditColumns = $columnsCheck->rowCount() > 0;
+
+            if ($hasEditColumns) {
+                $sql = 'UPDATE im_messages
+                        SET cipher_blob = :new_cipher_blob,
+                            edited_at = NOW(),
+                            edited_by = :edited_by,
+                            edit_count = :edit_count,
+                            edit_disabled = :edit_disabled
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+                
+                return Database::execute($sql, [
+                    ':new_cipher_blob' => $newCipherBlob,
+                    ':edited_by' => $userHandle,
+                    ':edit_count' => $newEditCount,
+                    ':edit_disabled' => $editDisabled ? 1 : 0,
+                    ':message_id' => $messageId,
+                ]) > 0;
+            } else {
+                // Fallback: just update content
+                $sql = 'UPDATE im_messages
+                        SET cipher_blob = :new_cipher_blob
+                        WHERE id = :message_id
+                          AND deleted_at IS NULL';
+                
+                return Database::execute($sql, [
+                    ':new_cipher_blob' => $newCipherBlob,
+                    ':message_id' => $messageId,
+                ]) > 0;
+            }
+        } catch (\Exception $e) {
+            error_log('EditMessage (IM) failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Delete a message (soft delete)
+     * 
+     * @param int $messageId Message ID
+     * @param string $userHandle User deleting the message
+     * @param bool $isModerator Whether user is moderator/admin
+     * @return bool True on success
+     */
+    public function deleteMessage(int $messageId, string $userHandle, bool $isModerator = false): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            $sql = 'UPDATE im_messages
+                    SET deleted_at = NOW()
+                    WHERE id = :message_id
+                      AND deleted_at IS NULL';
+
+            // If not moderator, ensure user owns the message
+            if (!$isModerator) {
+                $sql .= ' AND from_user = :user_handle';
+                return Database::execute($sql, [
+                    ':message_id' => $messageId,
+                    ':user_handle' => $userHandle,
+                ]) > 0;
+            } else {
+                // Moderators can delete any message
+                return Database::execute($sql, [
+                    ':message_id' => $messageId,
+                ]) > 0;
+            }
+        } catch (\Exception $e) {
+            error_log('DeleteMessage (IM) failed: ' . $e->getMessage());
+            return false;
+        }
     }
 }
 

@@ -1,0 +1,22 @@
+{
+    "patch_id": 23,
+    "name": "Add Audit Logging System",
+    "description": "Comprehensive audit trail system for compliance (SOC2, HIPAA, GDPR, ISO 27001). Includes audit_log table for tracking all user actions and audit_retention_policy table for configurable retention policies.",
+    "version": "1.0.0",
+    "author": "Sentinel Chat Platform",
+    "applies_to": "all",
+    "dependencies": ["005_add_authentication_system"],
+    "rollback_safe": false,
+    "files_changed": [
+        "src/Services/AuditService.php",
+        "src/Repositories/AuditRepository.php",
+        "api/audit.php"
+    ],
+    "database_changes": [
+        "CREATE TABLE audit_log",
+        "CREATE TABLE audit_retention_policy",
+        "INSERT default retention policies"
+    ],
+    "scope": "Adds enterprise-grade audit logging with full action tracking, configurable retention policies, and compliance-ready export capabilities. All user actions (login, logout, message send/edit/delete, file upload/download, room join/leave, admin changes, moderation actions) will be logged with full context including IP, user agent, session ID, before/after values, and metadata."
+}
+

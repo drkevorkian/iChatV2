@@ -63,6 +63,8 @@ try {
             $fromUser = $security->sanitizeInput($input['from_user'] ?? '');
             $toUser = $security->sanitizeInput($input['to_user'] ?? '');
             $cipherBlob = $input['cipher_blob'] ?? '';
+            $encryptionType = $security->sanitizeInput($input['encryption_type'] ?? 'none');
+            $nonce = $security->sanitizeInput($input['nonce'] ?? null);
             
             if (empty($fromUser) || empty($toUser) || empty($cipherBlob)) {
                 throw new \InvalidArgumentException('Missing required fields');
@@ -72,16 +74,25 @@ try {
                 throw new \InvalidArgumentException('Invalid user handle format');
             }
             
-            // Validate cipher_blob
-            if (!base64_decode($cipherBlob, true)) {
-                throw new \InvalidArgumentException('Invalid cipher_blob format');
+            // Validate cipher_blob (for E2EE, it's JSON, for fallback it's base64)
+            if ($encryptionType === 'e2ee') {
+                // E2EE messages are JSON strings
+                $decoded = json_decode($cipherBlob, true);
+                if ($decoded === null || !isset($decoded['encrypted']) || !isset($decoded['nonce'])) {
+                    throw new \InvalidArgumentException('Invalid E2EE cipher_blob format');
+                }
+            } else {
+                // Fallback: validate base64
+                if (!base64_decode($cipherBlob, true)) {
+                    throw new \InvalidArgumentException('Invalid cipher_blob format');
+                }
             }
             
             // Prevent sending to self (but allow it for notes/reminders)
             // Actually, let's allow self-IMs - they can be useful for notes
             
             // Create single conversation entry (no folder needed in conversation-based system)
-            $imId = $repository->sendIm($fromUser, $toUser, $cipherBlob);
+            $imId = $repository->sendIm($fromUser, $toUser, $cipherBlob, $encryptionType, $nonce);
             
             echo json_encode([
                 'success' => true,
@@ -135,6 +146,33 @@ try {
             echo json_encode([
                 'success' => true,
                 'marked_read' => $count,
+            ]);
+            break;
+            
+        case 'mark-read':
+            // Mark a specific message as read
+            if ($method !== 'POST') {
+                throw new \InvalidArgumentException('Invalid method for mark-read action');
+            }
+            
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input');
+            }
+            
+            $messageId = (int)($input['message_id'] ?? 0);
+            $fromUser = $security->sanitizeInput($input['from_user'] ?? '');
+            $userHandle = $auth->getCurrentUser()['username'] ?? '';
+            
+            if ($messageId <= 0 || empty($fromUser)) {
+                throw new \InvalidArgumentException('Invalid parameters');
+            }
+            
+            $success = $repository->markMessageAsRead($messageId, $userHandle, $fromUser);
+            
+            echo json_encode([
+                'success' => $success,
             ]);
             break;
             

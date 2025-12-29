@@ -1969,29 +1969,70 @@
                 return;
             }
             
-            messages.forEach((msg) => {
+            messages.forEach(async (msg) => {
                 const isOwn = msg.from_user === this.config.userHandle;
                 let messageText = '';
+                let isE2EE = false;
+                
                 try {
-                    const base64Decoded = atob(msg.cipher_blob);
-                    messageText = decodeURIComponent(base64Decoded.replace(/\+/g, '%20'));
+                    // Check if message is E2EE encrypted
+                    if (msg.encryption_type === 'e2ee' && window.E2EE && window.E2EE.keyPair) {
+                        try {
+                            // Get sender's public key
+                            let senderKey = window.KeyExchangeUI ? window.KeyExchangeUI.getPublicKey(msg.from_user) : null;
+                            if (!senderKey) {
+                                senderKey = await window.E2EE.getPublicKey(msg.from_user);
+                                if (senderKey && window.KeyExchangeUI) {
+                                    window.KeyExchangeUI.storePublicKey(msg.from_user, senderKey);
+                                }
+                            }
+                            
+                            if (senderKey) {
+                                // Decrypt E2EE message
+                                messageText = await window.E2EE.decryptMessage(msg.cipher_blob, senderKey);
+                                isE2EE = true;
+                            } else {
+                                messageText = '[E2EE: Key exchange required]';
+                            }
+                        } catch (e) {
+                            console.error('E2EE decryption failed:', e);
+                            messageText = '[E2EE: Decryption failed]';
+                        }
+                    } else {
+                        // Fallback to base64 decoding
+                        const base64Decoded = atob(msg.cipher_blob);
+                        messageText = decodeURIComponent(base64Decoded.replace(/\+/g, '%20'));
+                    }
                 } catch (e) {
                     messageText = '[Encrypted message]';
                 }
                 
+                // Get read receipt status
+                const isRead = msg.read_at && msg.read_at !== null && msg.read_at !== 'null';
+                const readReceipt = window.ReadReceipts ? window.ReadReceipts.renderReadReceipt(msg.id, isRead, isOwn) : '';
+                
+                const e2eeBadge = isE2EE ? '<span class="e2ee-status encrypted" title="End-to-End Encrypted"><i class="fas fa-lock e2ee-icon"></i></span>' : '';
+                
                 const messageDiv = $(`
-                    <div class="im-message ${isOwn ? 'own' : ''}">
+                    <div class="im-message ${isOwn ? 'own' : ''}" data-message-id="${msg.id}" data-read-at="${msg.read_at || ''}">
                         <div class="im-message-avatar">${this.getAvatar(isOwn ? this.config.userHandle : msg.from_user)}</div>
                         <div class="im-message-content">
                             <div class="im-message-header">
                                 <span class="im-message-sender">${this.escapeHtml(msg.from_user)}</span>
                                 <span class="im-message-time">${this.formatTime(msg.queued_at)}</span>
+                                ${e2eeBadge}
                             </div>
                             <div class="im-message-text">${this.escapeHtml(messageText)}</div>
+                            ${readReceipt}
                         </div>
                     </div>
                 `);
                 container.append(messageDiv);
+                
+                // Mark as read if viewing conversation
+                if (!isOwn && this.currentImConversation === msg.from_user && window.ReadReceipts) {
+                    window.ReadReceipts.markAsRead(msg.id, msg.from_user);
+                }
             });
             
             // Scroll to bottom only if auto-scroll is enabled and modal is not open
@@ -2003,7 +2044,7 @@
         /**
          * Send IM message in active conversation
          */
-        sendImMessage: function() {
+        async sendImMessage() {
             const input = $('#im-message-input');
             const message = input.val().trim();
             
@@ -2011,8 +2052,48 @@
                 return;
             }
             
-            // Encrypt message (simplified)
-            const cipherBlob = btoa(unescape(encodeURIComponent(message)));
+            let cipherBlob;
+            let encryptionType = 'none';
+            let nonce = null;
+            
+            // Try to use E2EE if available
+            if (window.E2EE && window.E2EE.keyPair) {
+                try {
+                    // Get recipient's public key
+                    let recipientKey = window.KeyExchangeUI ? window.KeyExchangeUI.getPublicKey(this.currentImConversation) : null;
+                    
+                    if (!recipientKey) {
+                        // Try to get from server
+                        recipientKey = await window.E2EE.getPublicKey(this.currentImConversation);
+                        if (recipientKey && window.KeyExchangeUI) {
+                            window.KeyExchangeUI.storePublicKey(this.currentImConversation, recipientKey);
+                        }
+                    }
+                    
+                    if (recipientKey) {
+                        // Encrypt with E2EE
+                        const encrypted = await window.E2EE.encryptMessage(message, recipientKey);
+                        const encryptedData = JSON.parse(encrypted);
+                        cipherBlob = encrypted; // Store full encrypted data
+                        encryptionType = 'e2ee';
+                        nonce = encryptedData.nonce;
+                    } else {
+                        // No public key available - request key exchange or use fallback
+                        if (window.KeyExchangeUI) {
+                            await window.KeyExchangeUI.requestKeyExchange(this.currentImConversation);
+                        }
+                        // Fallback to base64 encoding
+                        cipherBlob = btoa(unescape(encodeURIComponent(message)));
+                    }
+                } catch (e) {
+                    console.error('E2EE encryption failed, using fallback:', e);
+                    // Fallback to base64 encoding
+                    cipherBlob = btoa(unescape(encodeURIComponent(message)));
+                }
+            } else {
+                // E2EE not available - use base64 encoding
+                cipherBlob = btoa(unescape(encodeURIComponent(message)));
+            }
             
             $.ajax({
                 url: this.config.apiBase + '/proxy.php?path=im.php&action=send',
@@ -2021,11 +2102,18 @@
                 data: JSON.stringify({
                     from_user: this.config.userHandle,
                     to_user: this.currentImConversation,
-                    cipher_blob: cipherBlob
+                    cipher_blob: cipherBlob,
+                    encryption_type: encryptionType,
+                    nonce: nonce
                 }),
                 success: (response) => {
                     if (response.success) {
                         input.val('');
+                        
+                        // Stop typing indicator
+                        if (window.TypingIndicators) {
+                            window.TypingIndicators.stopTyping(this.currentImConversation);
+                        }
                         
                         // If WebSocket is connected, wait for message via WebSocket
                         // Otherwise reload immediately
