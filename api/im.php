@@ -14,6 +14,8 @@ require_once __DIR__ . '/../bootstrap.php';
 
 use iChat\Repositories\ImRepository;
 use iChat\Services\SecurityService;
+use iChat\Services\AuditService;
+use iChat\Services\AuthService;
 
 header('Content-Type: application/json');
 
@@ -54,10 +56,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for send action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $fromUser = $security->sanitizeInput($input['from_user'] ?? '');
@@ -74,12 +80,12 @@ try {
                 throw new \InvalidArgumentException('Invalid user handle format');
             }
             
-            // Validate cipher_blob (for E2EE, it's JSON, for fallback it's base64)
+            // SECURITY: Validate cipher_blob (for E2EE, it's JSON, for fallback it's base64)
             if ($encryptionType === 'e2ee') {
-                // E2EE messages are JSON strings
+                // E2EE messages are JSON strings - validate JSON parsing
                 $decoded = json_decode($cipherBlob, true);
-                if ($decoded === null || !isset($decoded['encrypted']) || !isset($decoded['nonce'])) {
-                    throw new \InvalidArgumentException('Invalid E2EE cipher_blob format');
+                if (json_last_error() !== JSON_ERROR_NONE || $decoded === null || !isset($decoded['encrypted']) || !isset($decoded['nonce'])) {
+                    throw new \InvalidArgumentException('Invalid E2EE cipher_blob format: ' . json_last_error_msg());
                 }
             } else {
                 // Fallback: validate base64
@@ -94,6 +100,26 @@ try {
             // Create single conversation entry (no folder needed in conversation-based system)
             $imId = $repository->sendIm($fromUser, $toUser, $cipherBlob, $encryptionType, $nonce);
             
+            // Log audit event for IM send
+            if ($imId) {
+                $auditService = new AuditService();
+                $authService = new AuthService();
+                $fromUserData = $authService->getUserByHandle($fromUser);
+                $fromUserId = $fromUserData['id'] ?? null;
+                
+                $auditService->logMessageSend(
+                    $fromUser,
+                    $fromUserId,
+                    (string)$imId,
+                    'im_' . $fromUser . '_' . $toUser, // Use conversation ID as room_id
+                    [
+                        'to_user' => $toUser,
+                        'encryption_type' => $encryptionType,
+                        'has_nonce' => !empty($nonce),
+                    ]
+                );
+            }
+            
             echo json_encode([
                 'success' => true,
                 'im_id' => $imId,
@@ -106,10 +132,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for login action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input) || !isset($input['im_ids']) || !is_array($input['im_ids'])) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input) || !isset($input['im_ids']) || !is_array($input['im_ids'])) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $imIds = array_map('intval', $input['im_ids']);
@@ -127,10 +157,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for open action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $userHandle = $security->sanitizeInput($input['user_handle'] ?? '');
@@ -155,10 +189,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for mark-read action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $messageId = (int)($input['message_id'] ?? 0);

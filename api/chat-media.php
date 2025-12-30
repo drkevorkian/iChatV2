@@ -13,6 +13,7 @@ require_once __DIR__ . '/../bootstrap.php';
 
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
+use iChat\Services\AuditService;
 use iChat\Database;
 
 header('Content-Type: application/json');
@@ -123,7 +124,22 @@ try {
                     ':mime_type' => $mimeType,
                 ]);
                 
-                $mediaIds[] = Database::lastInsertId();
+                $mediaId = Database::lastInsertId();
+                $mediaIds[] = $mediaId;
+                
+                // Log audit event for file upload
+                $auditService = new AuditService();
+                $currentUserData = $authService->getCurrentUser();
+                $userId = $currentUserData['id'] ?? null;
+                
+                $auditService->logFileUpload(
+                    $userHandle,
+                    $userId,
+                    (string)$mediaId,
+                    $mediaType,
+                    $file['size'],
+                    $file['name']
+                );
             }
             
             echo json_encode([
@@ -138,9 +154,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for link action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $messageId = isset($input['message_id']) ? (int)$input['message_id'] : 0;
@@ -196,6 +217,25 @@ try {
                 echo json_encode(['error' => 'File not found']);
                 exit;
             }
+            
+            // Log file download
+            $auditService = new AuditService();
+            $authService = new AuthService();
+            $viewer = $authService->getCurrentUser();
+            
+            // Ensure session is started for fallback
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            
+            $viewerHandle = $viewer['username'] ?? ($_SESSION['user_handle'] ?? 'guest');
+            $viewerUserId = $viewer['id'] ?? null;
+            
+            $auditService->logFileDownload(
+                $viewerHandle,
+                $viewerUserId,
+                (string)$mediaId
+            );
             
             // Output file with appropriate headers
             header('Content-Type: ' . ($media['mime_type'] ?? 'application/octet-stream'));

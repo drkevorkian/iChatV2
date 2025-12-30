@@ -83,6 +83,9 @@ try {
             if (!empty($_GET['end_date'])) {
                 $filters['end_date'] = $security->sanitizeInput($_GET['end_date']);
             }
+            if (!empty($_GET['search_term'])) {
+                $filters['search_term'] = $security->sanitizeInput($_GET['search_term']);
+            }
 
             $limit = isset($_GET['limit']) ? max(1, min(1000, (int)$_GET['limit'])) : 100;
             $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
@@ -186,15 +189,80 @@ try {
                     break;
 
                 case 'pdf':
-                    // PDF export would require a library like TCPDF or FPDF
-                    // For now, return JSON with a note that PDF export is not yet implemented
-                    http_response_code(501);
-                    echo json_encode([
-                        'error' => 'PDF export not yet implemented',
-                        'suggestion' => 'Use JSON or CSV format for now',
-                    ]);
+                    // PDF export with digital signature
+                    require_once __DIR__ . '/../src/Services/PdfExportService.php';
+                    $pdfService = new \iChat\Services\PdfExportService();
+                    
+                    $exportMetadata = [
+                        'export_date' => date('Y-m-d H:i:s'),
+                        'exported_by' => $user['username'],
+                        'filters' => $filters,
+                        'total_records' => count($logs),
+                    ];
+                    
+                    $pdfContent = $pdfService->generatePdf($logs, $exportMetadata);
+                    
+                    header('Content-Type: application/pdf');
+                    header('Content-Disposition: attachment; filename="audit_log_' . date('Y-m-d_His') . '.pdf"');
+                    header('Content-Length: ' . strlen($pdfContent));
+                    echo $pdfContent;
                     break;
             }
+            break;
+
+        case 'retention-policies':
+            // Get or update retention policies
+            if ($method === 'GET') {
+                $policies = $auditService->getRetentionPolicies();
+                echo json_encode([
+                    'success' => true,
+                    'policies' => $policies,
+                ]);
+            } elseif ($method === 'POST') {
+                // Update retention policy
+                // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+                $rawInput = file_get_contents('php://input');
+                if ($rawInput === false) {
+                    throw new \InvalidArgumentException('Failed to read request body');
+                }
+                $input = json_decode($rawInput, true);
+                if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                    throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+                }
+
+                $policyId = isset($input['id']) ? (int)$input['id'] : 0;
+                $retentionDays = isset($input['retention_days']) ? max(1, (int)$input['retention_days']) : 2555;
+                $autoPurge = isset($input['auto_purge']) ? (bool)$input['auto_purge'] : true;
+                $legalHold = isset($input['legal_hold']) ? (bool)$input['legal_hold'] : false;
+
+                if ($policyId <= 0) {
+                    throw new \InvalidArgumentException('Invalid policy ID');
+                }
+
+                $success = $auditService->updateRetentionPolicy($policyId, $retentionDays, $autoPurge, $legalHold);
+
+                echo json_encode([
+                    'success' => $success,
+                    'message' => $success ? 'Retention policy updated' : 'Failed to update policy',
+                ]);
+            } else {
+                throw new \InvalidArgumentException('Invalid method for retention-policies action');
+            }
+            break;
+
+        case 'purge-logs':
+            // Manually trigger log purge
+            if ($method !== 'POST') {
+                throw new \InvalidArgumentException('POST method required for purge-logs action');
+            }
+
+            $purgedCount = $auditService->purgeOldLogs();
+
+            echo json_encode([
+                'success' => true,
+                'purged_count' => $purgedCount,
+                'message' => "Purged {$purgedCount} old audit log entries",
+            ]);
             break;
 
         case 'stats':

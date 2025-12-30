@@ -760,6 +760,9 @@ $defaultRoom = $config->get('ui.default_room');
                         <button class="admin-subtab-btn" data-tab="file-storage">
                             <i class="fas fa-folder-open"></i> File Storage
                         </button>
+                        <button class="admin-subtab-btn" data-tab="audit-logs">
+                            <i class="fas fa-clipboard-list"></i> Audit Logs
+                        </button>
                     </div>
                     
                     <!-- Users Sub-Tabs -->
@@ -1161,6 +1164,200 @@ $defaultRoom = $config->get('ui.default_room');
                                 <div class="modal-footer" id="file-storage-modal-footer">
                                     <button class="btn-secondary" id="file-storage-modal-cancel">Cancel</button>
                                     <button class="btn-primary" id="file-storage-modal-save" style="display: none;">Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Audit Logs Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-audit-logs">
+                        <div class="audit-logs-section">
+                            <h3><i class="fas fa-clipboard-list"></i> Audit Logs & Compliance</h3>
+                            <p class="section-description">Searchable audit trail for all system actions. Export logs in JSON, CSV, or PDF format with digital signatures for compliance.</p>
+                            
+                            <!-- Search and Filter Controls -->
+                            <div class="audit-logs-controls" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+                                <div class="form-group" style="flex: 1; min-width: 200px;">
+                                    <label for="audit-search-input">Search:</label>
+                                    <input type="text" id="audit-search-input" class="form-control" placeholder="Search logs...">
+                                </div>
+                                <div class="form-group" style="flex: 0 0 150px;">
+                                    <label for="audit-user-filter">User Handle:</label>
+                                    <input type="text" id="audit-user-filter" class="form-control" placeholder="Filter by user">
+                                </div>
+                                <div class="form-group" style="flex: 0 0 150px;">
+                                    <label for="audit-action-filter">Action Type:</label>
+                                    <select id="audit-action-filter" class="form-control">
+                                        <option value="">All Actions</option>
+                                        <option value="login">Login</option>
+                                        <option value="logout">Logout</option>
+                                        <option value="message_send">Message Send</option>
+                                        <option value="message_edit">Message Edit</option>
+                                        <option value="message_delete">Message Delete</option>
+                                        <option value="file_upload">File Upload</option>
+                                        <option value="file_download">File Download</option>
+                                        <option value="room_join">Room Join</option>
+                                        <option value="room_leave">Room Leave</option>
+                                        <option value="admin_change">Admin Change</option>
+                                        <option value="moderation_action">Moderation</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex: 0 0 150px;">
+                                    <label for="audit-category-filter">Category:</label>
+                                    <select id="audit-category-filter" class="form-control">
+                                        <option value="">All Categories</option>
+                                        <option value="authentication">Authentication</option>
+                                        <option value="message">Message</option>
+                                        <option value="file">File</option>
+                                        <option value="room">Room</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="moderation">Moderation</option>
+                                        <option value="system">System</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex: 0 0 120px;">
+                                    <label for="audit-start-date">Start Date:</label>
+                                    <input type="date" id="audit-start-date" class="form-control">
+                                </div>
+                                <div class="form-group" style="flex: 0 0 120px;">
+                                    <label for="audit-end-date">End Date:</label>
+                                    <input type="date" id="audit-end-date" class="form-control">
+                                </div>
+                                <div class="form-group" style="flex: 0 0 100px;">
+                                    <label for="audit-success-filter">Success:</label>
+                                    <select id="audit-success-filter" class="form-control">
+                                        <option value="">All</option>
+                                        <option value="1">Success</option>
+                                        <option value="0">Failed</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex: 0 0 auto;">
+                                    <button id="audit-search-btn" class="btn-primary">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                </div>
+                                <div class="form-group" style="flex: 0 0 auto;">
+                                    <button id="audit-clear-filters-btn" class="btn-secondary">
+                                        <i class="fas fa-times"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Export Controls -->
+                            <div class="audit-export-controls" style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem; align-items: center;">
+                                <span style="font-weight: 600;">Export:</span>
+                                <button id="audit-export-json-btn" class="btn-secondary btn-sm">
+                                    <i class="fas fa-file-code"></i> JSON
+                                </button>
+                                <button id="audit-export-csv-btn" class="btn-secondary btn-sm">
+                                    <i class="fas fa-file-csv"></i> CSV
+                                </button>
+                                <button id="audit-export-pdf-btn" class="btn-secondary btn-sm">
+                                    <i class="fas fa-file-pdf"></i> PDF (Signed)
+                                </button>
+                                <span id="audit-total-count" style="margin-left: auto; color: var(--text-medium); font-size: 0.9rem;"></span>
+                            </div>
+                            
+                            <!-- Audit Logs Table -->
+                            <div class="audit-logs-table-container" style="overflow-x: auto;">
+                                <table class="audit-logs-table" style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: var(--ghost-white); border-bottom: 2px solid var(--border-color);">
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">ID</th>
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Timestamp</th>
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">User</th>
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Action</th>
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Category</th>
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Resource</th>
+                                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">IP Address</th>
+                                            <th style="padding: 0.75rem; text-align: center; font-weight: 600;">Success</th>
+                                            <th style="padding: 0.75rem; text-align: center; font-weight: 600;">Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="audit-logs-tbody">
+                                        <tr>
+                                            <td colspan="9" style="padding: 2rem; text-align: center; color: var(--text-medium);">
+                                                <div class="loading-messages">Click "Search" to load audit logs...</div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <!-- Pagination -->
+                            <div class="audit-pagination" style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span>Show:</span>
+                                    <select id="audit-limit-select" class="form-control" style="width: auto; padding: 0.25rem 0.5rem;">
+                                        <option value="50">50</option>
+                                        <option value="100" selected>100</option>
+                                        <option value="200">200</option>
+                                        <option value="500">500</option>
+                                    </select>
+                                    <span>per page</span>
+                                </div>
+                                <div id="audit-pagination-controls" style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <button id="audit-prev-page" class="btn-secondary btn-sm" disabled>
+                                        <i class="fas fa-chevron-left"></i> Previous
+                                    </button>
+                                    <span id="audit-page-info" style="padding: 0 1rem;">Page 1 of 1</span>
+                                    <button id="audit-next-page" class="btn-secondary btn-sm" disabled>
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Log Detail Modal -->
+                            <div id="audit-log-detail-modal" class="modal" style="display: none;">
+                                <div class="modal-content" style="max-width: 900px;">
+                                    <div class="modal-header">
+                                        <h2>Audit Log Details</h2>
+                                        <button class="modal-close" id="audit-log-detail-close">&times;</button>
+                                    </div>
+                                    <div class="modal-body" id="audit-log-detail-content">
+                                        <div class="loading-messages">Loading details...</div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button class="btn-secondary" id="audit-log-detail-close-btn">Close</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Retention Policies Section -->
+                            <div style="margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                <h3><i class="fas fa-clock"></i> Retention Policies</h3>
+                                <p class="section-description">Configure how long audit logs are retained before automatic purging. Logs on legal hold are never purged.</p>
+                                
+                                <div class="retention-policies-controls" style="margin-bottom: 1.5rem;">
+                                    <button id="refresh-retention-policies-btn" class="btn-secondary">
+                                        <i class="fas fa-sync"></i> Refresh Policies
+                                    </button>
+                                    <button id="purge-logs-now-btn" class="btn-primary" style="margin-left: 0.5rem;">
+                                        <i class="fas fa-trash-alt"></i> Purge Old Logs Now
+                                    </button>
+                                </div>
+                                
+                                <div id="retention-policies-list" class="retention-policies-list">
+                                    <div class="loading-messages">Loading retention policies...                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Retention Policies Section -->
+                            <div style="margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                <h3><i class="fas fa-clock"></i> Retention Policies</h3>
+                                <p class="section-description">Configure how long audit logs are retained before automatic purging. Logs on legal hold are never purged.</p>
+                                
+                                <div class="retention-policies-controls" style="margin-bottom: 1.5rem;">
+                                    <button id="refresh-retention-policies-btn" class="btn-secondary">
+                                        <i class="fas fa-sync"></i> Refresh Policies
+                                    </button>
+                                    <button id="purge-logs-now-btn" class="btn-primary" style="margin-left: 0.5rem;">
+                                        <i class="fas fa-trash-alt"></i> Purge Old Logs Now
+                                    </button>
+                                </div>
+                                
+                                <div id="retention-policies-list" class="retention-policies-list">
+                                    <div class="loading-messages">Loading retention policies...</div>
                                 </div>
                             </div>
                         </div>
@@ -1665,6 +1862,7 @@ $defaultRoom = $config->get('ui.default_room');
     <script src="/iChat/js/message-edit.js"></script>
     <script src="/iChat/js/rich-previews.js"></script>
     <script src="/iChat/js/ai-systems-admin.js"></script>
+    <script src="/iChat/js/audit-logs-admin.js"></script>
     <script src="/iChat/js/app.js"></script>
 </body>
 </html>

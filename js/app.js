@@ -2601,7 +2601,18 @@
                         <td><strong class="clickable-user-name" data-user-handle="${this.escapeHtml(user.user_handle || 'Unknown')}" style="cursor: pointer; color: var(--blizzard-blue); text-decoration: underline;">${this.escapeHtml(user.user_handle || 'Unknown')}</strong> ${bannedBadge} ${mutedBadge}</td>
                         <td>${this.escapeHtml(user.display_name || '-')}</td>
                         <td>${this.escapeHtml(user.email || '-')}</td>
-                        <td>${roleBadge}</td>
+                        <td>
+                            ${roleBadge}
+                            ${!user.is_guest && user.user_id ? `
+                                <select class="user-role-select" data-user-id="${user.user_id}" data-user-handle="${this.escapeHtml(user.user_handle)}" data-current-role="${user.role || 'user'}" style="margin-left: 0.5rem; padding: 0.25rem 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.85rem;">
+                                    <option value="user" ${(user.role || 'user') === 'user' ? 'selected' : ''}>User</option>
+                                    <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Moderator</option>
+                                    <option value="administrator" ${user.role === 'administrator' ? 'selected' : ''}>Administrator</option>
+                                    <option value="trusted_admin" ${user.role === 'trusted_admin' ? 'selected' : ''}>Trusted Admin</option>
+                                    <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option>
+                                </select>
+                            ` : ''}
+                        </td>
                         <td>${this.escapeHtml(user.current_room || '-')}</td>
                         <td>${this.escapeHtml(user.ip_address || '-')}</td>
                         <td>${this.escapeHtml(location)}</td>
@@ -2674,6 +2685,67 @@
                     this.sendIm(userHandle, message);
                 }
             });
+            });
+            
+            // Role change handler
+            $(document).off('change', '.user-role-select').on('change', '.user-role-select', (e) => {
+                const select = $(e.target);
+                const userId = select.data('user-id');
+                const userHandle = select.data('user-handle');
+                const currentRole = select.data('current-role');
+                const newRole = select.val();
+                
+                if (newRole === currentRole) {
+                    return; // No change
+                }
+                
+                this.showConfirm(`Change ${userHandle}'s role from ${currentRole} to ${newRole}?`, 'Change User Role').then((confirmed) => {
+                    if (confirmed) {
+                        this.updateUserRole(userId, userHandle, newRole, select);
+                    } else {
+                        // Revert selection
+                        select.val(currentRole);
+                    }
+                });
+            });
+        },
+        
+        /**
+         * Update user role
+         */
+        updateUserRole: function(userId, userHandle, newRole, selectElement) {
+            $.ajax({
+                url: this.config.apiBase + '/proxy.php',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    path: 'user-management.php',
+                    action: 'update-role',
+                    user_id: userId,
+                    user_handle: userHandle,
+                    new_role: newRole
+                }),
+                success: (response) => {
+                    if (response && response.success) {
+                        this.showAlert(`User role updated successfully. ${userHandle} is now a ${newRole}.`, 'Role Updated', 'success');
+                        // Update the select element's data attribute
+                        $(selectElement).data('current-role', newRole);
+                        // Reload user list to reflect changes
+                        this.loadAllUsers();
+                    } else {
+                        this.showAlert('Failed to update role: ' + (response.error || 'Unknown error'), 'Error', 'error');
+                        // Revert selection
+                        const currentRole = $(selectElement).data('current-role');
+                        $(selectElement).val(currentRole);
+                    }
+                },
+                error: (xhr) => {
+                    this.showAlert('Error updating role. Please try again.', 'Error', 'error');
+                    // Revert selection
+                    const currentRole = $(selectElement).data('current-role');
+                    $(selectElement).val(currentRole);
+                    console.error('Update role error:', xhr);
+                }
             });
         },
         

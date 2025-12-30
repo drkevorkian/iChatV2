@@ -49,9 +49,14 @@ try {
                 throw new \InvalidArgumentException('POST method required');
             }
 
-            $input = json_decode(file_get_contents('php://input'), true);
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
 
             $messageId = (int)($input['message_id'] ?? 0);
@@ -92,15 +97,33 @@ try {
             }
 
             if ($success) {
+                // Get user ID for audit logging
+                $userId = $currentUser['id'] ?? null;
+                
+                // Get before/after values for audit
+                $beforeValue = [];
+                $afterValue = ['cipher_blob' => $cipherBlob];
+                
+                // Try to get original message content for before_value
+                if ($messageType === 'room') {
+                    $originalMessage = $messageRepo->getMessageById($messageId);
+                    if ($originalMessage) {
+                        $beforeValue = ['cipher_blob' => $originalMessage['cipher_blob'] ?? ''];
+                    }
+                } else {
+                    $originalMessage = $imRepo->getMessageById($messageId);
+                    if ($originalMessage) {
+                        $beforeValue = ['cipher_blob' => $originalMessage['cipher_blob'] ?? ''];
+                    }
+                }
+                
                 // Log audit event
-                $auditService->logSuccess(
-                    'MESSAGE_EDIT',
-                    $messageType === 'room' ? 'ROOM_MESSAGE' : 'IM_MESSAGE',
+                $auditService->logMessageEdit(
+                    $userHandle,
+                    $userId,
                     (string)$messageId,
-                    [
-                        'message_type' => $messageType,
-                        'room_id' => $roomId,
-                    ]
+                    $beforeValue,
+                    $afterValue
                 );
 
                 echo json_encode([
@@ -118,9 +141,14 @@ try {
                 throw new \InvalidArgumentException('POST method required');
             }
 
-            $input = json_decode(file_get_contents('php://input'), true);
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
 
             $messageId = (int)($input['message_id'] ?? 0);
@@ -156,16 +184,31 @@ try {
             }
 
             if ($success) {
+                // Get user ID for audit logging
+                $userId = $currentUser['id'] ?? null;
+                
+                // Get before value (message content before deletion)
+                $beforeValue = [];
+                if ($messageType === 'room') {
+                    $originalMessage = $messageRepo->getMessageById($messageId);
+                    if ($originalMessage) {
+                        $beforeValue = [
+                            'cipher_blob' => $originalMessage['cipher_blob'] ?? '',
+                            'room_id' => $originalMessage['room_id'] ?? '',
+                        ];
+                    }
+            } else {
+                // For IM messages, we don't have getMessageById, so skip before_value
+                // The delete will still be logged
+                $beforeValue = [];
+            }
+                
                 // Log audit event
-                $auditService->logSuccess(
-                    'MESSAGE_DELETE',
-                    $messageType === 'room' ? 'ROOM_MESSAGE' : 'IM_MESSAGE',
+                $auditService->logMessageDelete(
+                    $userHandle,
+                    $userId,
                     (string)$messageId,
-                    [
-                        'message_type' => $messageType,
-                        'room_id' => $roomId,
-                        'deleted_by_role' => $userRole,
-                    ]
+                    $beforeValue
                 );
 
                 echo json_encode([

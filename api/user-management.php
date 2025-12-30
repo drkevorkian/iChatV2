@@ -18,6 +18,7 @@ use iChat\Repositories\ReportRepository;
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
 use iChat\Services\GeolocationService;
+use iChat\Services\AuditService;
 
 header('Content-Type: application/json');
 
@@ -185,7 +186,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $userHandle = $security->sanitizeInput($input['user_handle'] ?? '');
             $roomId = $security->sanitizeInput($input['room_id'] ?? '');
             
@@ -194,6 +203,20 @@ try {
             }
             
             $userRepo->kickUser($userHandle, $roomId);
+            
+            // Log moderation action
+            $auditService = new AuditService();
+            $adminHandle = ($currentUser !== null && isset($currentUser['username'])) ? $currentUser['username'] : 'system';
+            $adminUserId = ($currentUser !== null && isset($currentUser['id'])) ? $currentUser['id'] : null;
+            $auditService->logModerationAction(
+                $adminHandle,
+                $adminUserId,
+                'kick',
+                $userHandle,
+                [
+                    'room_id' => $roomId,
+                ]
+            );
             
             echo json_encode([
                 'success' => true,
@@ -209,7 +232,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $userHandle = $security->sanitizeInput($input['user_handle'] ?? '');
             $reason = $security->sanitizeInput($input['reason'] ?? 'No reason provided');
             $expiresAt = $input['expires_at'] ?? null;
@@ -225,6 +256,21 @@ try {
             
             $userRepo->muteUser($userHandle, $userRole, $reason, $expiresDateTime);
             
+            // Log moderation action
+            $auditService = new AuditService();
+            $adminHandle = ($currentUser !== null && isset($currentUser['username'])) ? $currentUser['username'] : 'system';
+            $adminUserId = ($currentUser !== null && isset($currentUser['id'])) ? $currentUser['id'] : null;
+            $auditService->logModerationAction(
+                $adminHandle,
+                $adminUserId,
+                'mute',
+                $userHandle,
+                [
+                    'reason' => $reason,
+                    'expires_at' => $expiresAt,
+                ]
+            );
+            
             echo json_encode([
                 'success' => true,
                 'message' => "User {$userHandle} muted",
@@ -239,7 +285,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $userHandle = $security->sanitizeInput($input['user_handle'] ?? '');
             $reason = $security->sanitizeInput($input['reason'] ?? 'No reason provided');
             $ipAddress = $security->sanitizeInput($input['ip_address'] ?? null);
@@ -255,7 +309,36 @@ try {
                 $expiresDateTime = new \DateTime($expiresAt);
             }
             
+            // Get user info before ban for audit
+            $targetUser = null;
+            try {
+                $authRepo = new AuthRepository();
+                $targetUser = $authRepo->getUserByUsernameOrEmail($userHandle);
+            } catch (\Exception $e) {
+                // Continue without target user info
+            }
+            
             $banId = $userRepo->banUser($userHandle, $userRole, $reason, $ipAddress, $expiresDateTime, $email);
+            
+            // Log moderation action
+            $auditService = new AuditService();
+            $adminHandle = ($currentUser !== null && isset($currentUser['username'])) ? $currentUser['username'] : 'system';
+            $adminUserId = ($currentUser !== null && isset($currentUser['id'])) ? $currentUser['id'] : null;
+            $targetUserId = $targetUser['id'] ?? null;
+            
+            $auditService->logModerationAction(
+                $adminHandle,
+                $adminUserId,
+                'ban',
+                $userHandle,
+                [
+                    'ban_id' => $banId,
+                    'reason' => $reason,
+                    'ip_address' => $ipAddress,
+                    'expires_at' => $expiresAt,
+                    'target_user_id' => $targetUserId,
+                ]
+            );
             
             // Generate unban URL if email provided
             $unbanUrl = null;
@@ -284,7 +367,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $userHandle = $security->sanitizeInput($input['user_handle'] ?? '');
             $ipAddress = $security->sanitizeInput($input['ip_address'] ?? null);
             
@@ -292,9 +383,34 @@ try {
                 throw new \InvalidArgumentException('Missing user_handle');
             }
             
+            // Get ban info before unban for audit
+            $banInfo = $userRepo->getBanInfo($userHandle, $ipAddress);
+            
             $success = $userRepo->unbanUser($userHandle, $ipAddress);
             
             if ($success) {
+                // Log moderation action
+                $auditService = new AuditService();
+                $adminHandle = ($currentUser !== null && isset($currentUser['username'])) ? $currentUser['username'] : 'system';
+                $adminUserId = ($currentUser !== null && isset($currentUser['id'])) ? $currentUser['id'] : null;
+                
+                // Safely get ban reason
+                $previousBanReason = null;
+                if (!empty($banInfo) && is_array($banInfo) && isset($banInfo['reason'])) {
+                    $previousBanReason = $banInfo['reason'];
+                }
+                
+                $auditService->logModerationAction(
+                    $adminHandle,
+                    $adminUserId,
+                    'unban',
+                    $userHandle,
+                    [
+                        'ip_address' => $ipAddress,
+                        'previous_ban_reason' => $previousBanReason,
+                    ]
+                );
+                
                 echo json_encode([
                     'success' => true,
                     'message' => "User {$userHandle} unbanned",
@@ -335,7 +451,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $toUser = $security->sanitizeInput($input['to_user'] ?? '');
             $message = $security->sanitizeInput($input['message'] ?? '');
             
@@ -355,6 +479,94 @@ try {
             ]);
             break;
             
+        case 'update-role':
+            // Update user role
+            if ($method !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['error' => 'POST method required']);
+                exit;
+            }
+            
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
+            $userId = isset($input['user_id']) ? (int)$input['user_id'] : 0;
+            $userHandle = $security->sanitizeInput($input['user_handle'] ?? '');
+            $newRole = $security->sanitizeInput($input['new_role'] ?? '');
+            
+            if ($userId <= 0 || empty($userHandle) || empty($newRole)) {
+                throw new \InvalidArgumentException('Missing required fields');
+            }
+            
+            // Validate role
+            $allowedRoles = ['user', 'moderator', 'administrator', 'trusted_admin', 'owner'];
+            if (!in_array($newRole, $allowedRoles, true)) {
+                throw new \InvalidArgumentException('Invalid role');
+            }
+            
+            // Only administrators, trusted admins, and owners can change roles
+            if (!in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Insufficient permissions']);
+                exit;
+            }
+            
+            // Get current user info for audit
+            $authRepo = new AuthRepository();
+            $targetUser = $authRepo->getUserById($userId);
+            if (!$targetUser) {
+                throw new \InvalidArgumentException('User not found');
+            }
+            
+            $oldRole = $targetUser['role'] ?? 'user';
+            
+            // Prevent downgrading owner or changing own role
+            if ($targetUser['role'] === 'owner' && $newRole !== 'owner') {
+                throw new \InvalidArgumentException('Cannot change owner role');
+            }
+            
+            if ($targetUser['username'] === $currentUser['username'] && $newRole !== $oldRole) {
+                throw new \InvalidArgumentException('Cannot change your own role');
+            }
+            
+            // Update role
+            $success = $authRepo->updateUserRole($userId, $newRole);
+            
+            if ($success) {
+                // Log admin change
+                $auditService = new AuditService();
+                $adminHandle = ($currentUser !== null && isset($currentUser['username'])) ? $currentUser['username'] : 'system';
+                $adminUserId = ($currentUser !== null && isset($currentUser['id'])) ? $currentUser['id'] : null;
+                
+                $auditService->logAdminChange(
+                    $adminHandle,
+                    $adminUserId,
+                    'user_role_change',
+                    'user',
+                    (string)$userId,
+                    ['role' => $oldRole],
+                    ['role' => $newRole]
+                );
+                
+                echo json_encode([
+                    'success' => true,
+                    'message' => "User {$userHandle} role updated from {$oldRole} to {$newRole}",
+                ]);
+            } else {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Failed to update role',
+                ]);
+            }
+            break;
+            
         case 'report':
             // Report a user
             if ($method !== 'POST') {
@@ -363,11 +575,14 @@ try {
                 exit;
             }
             
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
             $rawInput = $GLOBALS['HTTP_RAW_POST_DATA'] ?? file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
             $input = json_decode($rawInput, true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $reportedUserHandle = $security->sanitizeInput($input['reported_user'] ?? '');

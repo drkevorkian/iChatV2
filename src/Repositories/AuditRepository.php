@@ -170,6 +170,35 @@ class AuditRepository
                 $params[':end_date'] = $filters['end_date'];
             }
 
+            // Search term (full-text search across multiple fields)
+            if (!empty($filters['search_term'])) {
+                $searchTerm = '%' . $filters['search_term'] . '%';
+                $sql .= ' AND (
+                    user_handle LIKE :search_term1
+                    OR action_type LIKE :search_term2
+                    OR action_category LIKE :search_term3
+                    OR resource_type LIKE :search_term4
+                    OR resource_id LIKE :search_term5
+                    OR ip_address LIKE :search_term6
+                    OR user_agent LIKE :search_term7
+                    OR error_message LIKE :search_term8
+                    OR before_value LIKE :search_term9
+                    OR after_value LIKE :search_term10
+                    OR metadata LIKE :search_term11
+                )';
+                $params[':search_term1'] = $searchTerm;
+                $params[':search_term2'] = $searchTerm;
+                $params[':search_term3'] = $searchTerm;
+                $params[':search_term4'] = $searchTerm;
+                $params[':search_term5'] = $searchTerm;
+                $params[':search_term6'] = $searchTerm;
+                $params[':search_term7'] = $searchTerm;
+                $params[':search_term8'] = $searchTerm;
+                $params[':search_term9'] = $searchTerm;
+                $params[':search_term10'] = $searchTerm;
+                $params[':search_term11'] = $searchTerm;
+            }
+
             // Validate orderBy to prevent SQL injection
             $allowedOrderBy = ['timestamp', 'user_handle', 'action_type', 'action_category', 'ip_address'];
             if (!in_array($orderBy, $allowedOrderBy, true)) {
@@ -279,6 +308,35 @@ class AuditRepository
                 $params[':end_date'] = $filters['end_date'];
             }
 
+            // Search term (same as getLogs)
+            if (!empty($filters['search_term'])) {
+                $searchTerm = '%' . $filters['search_term'] . '%';
+                $sql .= ' AND (
+                    user_handle LIKE :search_term1
+                    OR action_type LIKE :search_term2
+                    OR action_category LIKE :search_term3
+                    OR resource_type LIKE :search_term4
+                    OR resource_id LIKE :search_term5
+                    OR ip_address LIKE :search_term6
+                    OR user_agent LIKE :search_term7
+                    OR error_message LIKE :search_term8
+                    OR before_value LIKE :search_term9
+                    OR after_value LIKE :search_term10
+                    OR metadata LIKE :search_term11
+                )';
+                $params[':search_term1'] = $searchTerm;
+                $params[':search_term2'] = $searchTerm;
+                $params[':search_term3'] = $searchTerm;
+                $params[':search_term4'] = $searchTerm;
+                $params[':search_term5'] = $searchTerm;
+                $params[':search_term6'] = $searchTerm;
+                $params[':search_term7'] = $searchTerm;
+                $params[':search_term8'] = $searchTerm;
+                $params[':search_term9'] = $searchTerm;
+                $params[':search_term10'] = $searchTerm;
+                $params[':search_term11'] = $searchTerm;
+            }
+
             $result = Database::queryOne($sql, $params);
             return (int)($result['count'] ?? 0);
         } catch (\Exception $e) {
@@ -304,6 +362,43 @@ class AuditRepository
         } catch (\Exception $e) {
             error_log("AuditRepository: Failed to get retention policies: " . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Update retention policy
+     * 
+     * @param int $policyId Policy ID
+     * @param int $retentionDays Number of days to retain
+     * @param bool $autoPurge Whether to auto-purge
+     * @param bool $legalHold Whether on legal hold
+     * @return bool True if successful
+     */
+    public function updateRetentionPolicy(int $policyId, int $retentionDays, bool $autoPurge, bool $legalHold): bool
+    {
+        if (!DatabaseHealth::isAvailable()) {
+            return false;
+        }
+
+        try {
+            $sql = 'UPDATE audit_retention_policy 
+                    SET retention_days = :retention_days,
+                        auto_purge = :auto_purge,
+                        legal_hold = :legal_hold,
+                        updated_at = NOW()
+                    WHERE id = :id';
+
+            Database::execute($sql, [
+                ':id' => $policyId,
+                ':retention_days' => $retentionDays,
+                ':auto_purge' => $autoPurge ? 1 : 0,
+                ':legal_hold' => $legalHold ? 1 : 0,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            error_log("AuditRepository: Failed to update retention policy: " . $e->getMessage());
+            return false;
         }
     }
 

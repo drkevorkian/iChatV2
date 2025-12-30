@@ -157,9 +157,13 @@ try {
             }
             
             // Get old PID before stopping
+            // SECURITY: Check file exists before reading to prevent errors
             $oldPid = null;
-            if (file_exists($pidFile)) {
-                $oldPid = (int)trim(file_get_contents($pidFile));
+            if (file_exists($pidFile) && is_readable($pidFile)) {
+                $pidContent = @file_get_contents($pidFile);
+                if ($pidContent !== false) {
+                    $oldPid = (int)trim($pidContent);
+                }
             }
             
             // Trigger restart in background (non-blocking)
@@ -358,12 +362,16 @@ function checkWebSocketStatus(string $host, int $port, string $pidFile): array {
         $result['running'] = false;
         $result['pid'] = null;
         
+        // SECURITY: Check file exists and is readable before reading
         // Clean up stale PID file if it exists
-        if (file_exists($pidFile)) {
-            $storedPid = (int)trim(file_get_contents($pidFile));
-            if ($storedPid > 0 && !isProcessRunning($storedPid)) {
-                error_log("WebSocket server not running (no ports listening), cleaning up stale PID file (PID: {$storedPid})");
-                @unlink($pidFile);
+        if (file_exists($pidFile) && is_readable($pidFile)) {
+            $pidContent = @file_get_contents($pidFile);
+            if ($pidContent !== false) {
+                $storedPid = (int)trim($pidContent);
+                if ($storedPid > 0 && !isProcessRunning($storedPid)) {
+                    error_log("WebSocket server not running (no ports listening), cleaning up stale PID file (PID: {$storedPid})");
+                    @unlink($pidFile);
+                }
             }
         }
         return $result;
@@ -372,10 +380,14 @@ function checkWebSocketStatus(string $host, int $port, string $pidFile): array {
     // Port is listening and PID is valid - server is running
     $result['running'] = true;
     
+    // SECURITY: Check file exists and is readable before reading
     // STEP 2: Compare with stored PID and update if different
     $storedPid = null;
-    if (file_exists($pidFile)) {
-        $storedPid = (int)trim(file_get_contents($pidFile));
+    if (file_exists($pidFile) && is_readable($pidFile)) {
+        $pidContent = @file_get_contents($pidFile);
+        if ($pidContent !== false) {
+            $storedPid = (int)trim($pidContent);
+        }
     }
     
     if ($storedPid !== $foundPid) {
@@ -522,14 +534,18 @@ function startWebSocketServer(string $script, string $logFile, string $pidFile):
         }
     }
     
+    // SECURITY: Check file exists and is readable before reading
     // Check if already running (by PID file)
-    if (file_exists($pidFile)) {
-        $pid = (int)trim(file_get_contents($pidFile));
-        if ($pid > 0 && isProcessRunning($pid)) {
-            return [
-                'success' => false,
-                'message' => 'WebSocket server is already running (PID: ' . $pid . ')'
-            ];
+    if (file_exists($pidFile) && is_readable($pidFile)) {
+        $pidContent = @file_get_contents($pidFile);
+        if ($pidContent !== false) {
+            $pid = (int)trim($pidContent);
+            if ($pid > 0 && isProcessRunning($pid)) {
+                return [
+                    'success' => false,
+                    'message' => 'WebSocket server is already running (PID: ' . $pid . ')'
+                ];
+            }
         }
         // Clean up stale PID file
         @unlink($pidFile);
@@ -766,14 +782,23 @@ function startWebSocketServer(string $script, string $logFile, string $pidFile):
  * Stop WebSocket server
  */
 function stopWebSocketServer(string $pidFile): array {
-    if (!file_exists($pidFile)) {
+    // SECURITY: Check file exists and is readable before reading
+    if (!file_exists($pidFile) || !is_readable($pidFile)) {
         return [
             'success' => false,
             'message' => 'WebSocket server is not running (no PID file found)'
         ];
     }
     
-    $pid = (int)trim(file_get_contents($pidFile));
+    $pidContent = @file_get_contents($pidFile);
+    if ($pidContent === false) {
+        return [
+            'success' => false,
+            'message' => 'Failed to read PID file'
+        ];
+    }
+    
+    $pid = (int)trim($pidContent);
     if ($pid <= 0) {
         return [
             'success' => false,
@@ -824,12 +849,17 @@ function stopWebSocketServer(string $pidFile): array {
  * Get WebSocket server logs
  */
 function getWebSocketLogs(string $logFile, int $lines = 100): array {
-    if (!file_exists($logFile)) {
+    // SECURITY: Check file exists and is readable before reading
+    if (!file_exists($logFile) || !is_readable($logFile)) {
         return [];
     }
     
-    // Read last N lines
-    $content = file_get_contents($logFile);
+    // Read last N lines with error checking
+    $content = @file_get_contents($logFile);
+    if ($content === false) {
+        return [];
+    }
+    
     $allLines = explode("\n", $content);
     $allLines = array_filter($allLines, function($line) {
         return trim($line) !== '';

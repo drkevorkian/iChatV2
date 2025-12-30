@@ -58,10 +58,14 @@ try {
         ]);
     } elseif ($method === 'POST' && $action === 'escrow-request') {
         // Create escrow request
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!is_array($input)) {
-            throw new \InvalidArgumentException('Invalid JSON input');
+        // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+        $rawInput = file_get_contents('php://input');
+        if ($rawInput === false) {
+            throw new \InvalidArgumentException('Failed to read request body');
+        }
+        $input = json_decode($rawInput, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+            throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
         }
         
         $roomId = $security->sanitizeInput($input['room_id'] ?? '');

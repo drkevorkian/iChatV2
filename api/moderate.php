@@ -15,6 +15,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use iChat\Repositories\MessageRepository;
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
+use iChat\Services\AuditService;
 
 header('Content-Type: application/json');
 
@@ -50,6 +51,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? '';
 
 $messageRepo = new MessageRepository();
+$auditService = new AuditService();
 
 try {
     switch ($action) {
@@ -61,7 +63,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $messageId = isset($input['message_id']) ? (int)$input['message_id'] : 0;
             
             if ($messageId <= 0) {
@@ -71,6 +81,20 @@ try {
             $success = $messageRepo->hideMessage($messageId, $userHandle);
             
             if ($success) {
+                // Log moderation action
+                $message = $messageRepo->getMessageById($messageId);
+                $targetHandle = $message['sender_handle'] ?? 'unknown';
+                $auditService->logModerationAction(
+                    $userHandle,
+                    $currentUser['id'] ?? null,
+                    'hide',
+                    $targetHandle,
+                    [
+                        'message_id' => $messageId,
+                        'room_id' => $message['room_id'] ?? null,
+                    ]
+                );
+                
                 echo json_encode([
                     'success' => true,
                     'message' => 'Message hidden successfully',
@@ -98,7 +122,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $messageId = isset($input['message_id']) ? (int)$input['message_id'] : 0;
             
             if ($messageId <= 0) {
@@ -108,6 +140,20 @@ try {
             $success = $messageRepo->softDelete($messageId);
             
             if ($success) {
+                // Log moderation action
+                $message = $messageRepo->getMessageById($messageId);
+                $targetHandle = $message['sender_handle'] ?? 'unknown';
+                $auditService->logModerationAction(
+                    $userHandle,
+                    $currentUser['id'] ?? null,
+                    'delete',
+                    $targetHandle,
+                    [
+                        'message_id' => $messageId,
+                        'room_id' => $message['room_id'] ?? null,
+                    ]
+                );
+                
                 echo json_encode([
                     'success' => true,
                     'message' => 'Message deleted successfully',
@@ -129,7 +175,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $messageId = isset($input['message_id']) ? (int)$input['message_id'] : 0;
             $newMessage = $input['new_message'] ?? '';
             
@@ -140,9 +194,28 @@ try {
             // Encrypt new message
             $cipherBlob = base64_encode($newMessage);
             
+            // Get original message for audit
+            $originalMessage = $messageRepo->getMessageById($messageId);
+            $beforeValue = $originalMessage ? ['cipher_blob' => $originalMessage['cipher_blob'] ?? ''] : [];
+            
             $success = $messageRepo->editMessage($messageId, $cipherBlob, $userHandle);
             
             if ($success) {
+                // Log moderation action
+                $targetHandle = $originalMessage['sender_handle'] ?? 'unknown';
+                $auditService->logModerationAction(
+                    $userHandle,
+                    $currentUser['id'] ?? null,
+                    'edit',
+                    $targetHandle,
+                    [
+                        'message_id' => $messageId,
+                        'room_id' => $originalMessage['room_id'] ?? null,
+                        'before_value' => $beforeValue,
+                        'after_value' => ['cipher_blob' => $cipherBlob],
+                    ]
+                );
+                
                 echo json_encode([
                     'success' => true,
                     'message' => 'Message edited successfully',
@@ -170,7 +243,15 @@ try {
                 exit;
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
+            }
             $roomId = $security->sanitizeInput($input['room_id'] ?? '');
             $senderHandle = $security->sanitizeInput($input['sender_handle'] ?? '');
             $message = $input['message'] ?? '';
@@ -196,6 +277,21 @@ try {
                 $cipherBlob,
                 1,
                 $userHandle
+            );
+            
+            // Log admin action (mock message creation)
+            $auditService->logAdminChange(
+                $userHandle,
+                $currentUser['id'] ?? null,
+                'mock_message',
+                'message',
+                (string)$messageId,
+                [],
+                [
+                    'room_id' => $roomId,
+                    'impersonated_user' => $senderHandle,
+                    'message_created' => true,
+                ]
             );
             
             echo json_encode([

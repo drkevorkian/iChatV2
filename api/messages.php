@@ -21,6 +21,7 @@ use iChat\Services\AsciiArtService;
 use iChat\Services\PinkyBrainService;
 use iChat\Services\AuthService;
 use iChat\Services\AIService;
+use iChat\Services\AuditService;
 
 header('Content-Type: application/json');
 
@@ -88,10 +89,14 @@ try {
             
         case 'POST':
             // Enqueue a new message
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             // Validate required fields
@@ -244,6 +249,31 @@ try {
                 $filterVersion,
                 $shouldHide
             );
+            
+            // Log audit event for message send
+            if ($messageId) {
+                $auditService = new AuditService();
+                $authService = new AuthService();
+                $senderUser = $authService->getUserByHandle($senderHandle);
+                $senderUserId = $senderUser['id'] ?? null;
+                
+                $auditService->logMessageSend(
+                    $senderHandle,
+                    $senderUserId,
+                    (string)$messageId,
+                    $roomId,
+                    [
+                        'message_length' => strlen($messageText),
+                        'has_media' => !empty($mediaIds),
+                        'media_count' => count($mediaIds),
+                        'flagged' => $isFlagged,
+                        'flagged_words' => $flaggedWords,
+                        'ai_moderated' => $aiModerationResult !== null,
+                        'ai_action' => $aiModerationResult['action'] ?? null,
+                        'is_hidden' => $shouldHide,
+                    ]
+                );
+            }
             
             // Update AI moderation log with message ID if available
             if ($aiModerationResult && $messageId && is_numeric($messageId)) {

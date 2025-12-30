@@ -15,6 +15,8 @@ require_once __DIR__ . '/../bootstrap.php';
 use iChat\Repositories\PresenceRepository;
 use iChat\Repositories\UserManagementRepository;
 use iChat\Services\SecurityService;
+use iChat\Services\AuditService;
+use iChat\Services\AuthService;
 
 header('Content-Type: application/json');
 
@@ -34,10 +36,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for heartbeat action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $roomId = $security->sanitizeInput($input['room_id'] ?? '');
@@ -78,7 +84,35 @@ try {
             // Get session ID
             $sessionId = session_id();
             
+            // Check if this is a first join (no existing presence in last 30 seconds)
+            $isFirstJoin = false;
+            if (\iChat\Services\DatabaseHealth::isAvailable()) {
+                try {
+                    $checkSql = 'SELECT COUNT(*) as count FROM room_presence 
+                                 WHERE room_id = :room_id AND user_handle = :user_handle 
+                                 AND last_seen > DATE_SUB(NOW(), INTERVAL 30 SECOND)';
+                    $result = \iChat\Database::queryOne($checkSql, [
+                        ':room_id' => $roomId,
+                        ':user_handle' => $userHandle,
+                    ]);
+                    $isFirstJoin = ((int)($result['count'] ?? 0)) === 0;
+                } catch (\Exception $e) {
+                    // If check fails, assume it's not a first join to avoid spam
+                    $isFirstJoin = false;
+                }
+            }
+            
             $success = $repository->updatePresence($roomId, $userHandle, $ipAddress, $sessionId);
+            
+            // Log room join on first presence update
+            if ($success && $isFirstJoin) {
+                $auditService = new AuditService();
+                $authRepo = new \iChat\Repositories\AuthRepository();
+                $userData = $authRepo->getUserByUsernameOrEmail($userHandle);
+                $userId = $userData['id'] ?? null;
+                
+                $auditService->logRoomJoin($userHandle, $userId, $roomId);
+            }
             
             echo json_encode([
                 'success' => $success,
@@ -113,10 +147,14 @@ try {
                 throw new \InvalidArgumentException('Invalid method for leave action');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            if (!is_array($input)) {
-                throw new \InvalidArgumentException('Invalid JSON input');
+            // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
+            $rawInput = file_get_contents('php://input');
+            if ($rawInput === false) {
+                throw new \InvalidArgumentException('Failed to read request body');
+            }
+            $input = json_decode($rawInput, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+                throw new \InvalidArgumentException('Invalid JSON input: ' . json_last_error_msg());
             }
             
             $roomId = $security->sanitizeInput($input['room_id'] ?? '');
@@ -131,6 +169,16 @@ try {
             }
             
             $success = $repository->removePresence($roomId, $userHandle);
+            
+            // Log room leave
+            if ($success) {
+                $auditService = new AuditService();
+                $authRepo = new \iChat\Repositories\AuthRepository();
+                $userData = $authRepo->getUserByUsernameOrEmail($userHandle);
+                $userId = $userData['id'] ?? null;
+                
+                $auditService->logRoomLeave($userHandle, $userId, $roomId);
+            }
             
             echo json_encode([
                 'success' => $success,

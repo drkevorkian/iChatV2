@@ -407,5 +407,39 @@ class AuditService
     {
         return $this->auditRepo->getLogCount($filters);
     }
+
+    /**
+     * Get retention policies (delegates to repository)
+     * 
+     * @return array Array of retention policies
+     */
+    public function getRetentionPolicies(): array
+    {
+        return $this->auditRepo->getRetentionPolicies();
+    }
+
+    /**
+     * Update retention policy
+     * 
+     * @param int $policyId Policy ID
+     * @param int $retentionDays Number of days to retain
+     * @param bool $autoPurge Whether to auto-purge
+     * @param bool $legalHold Whether on legal hold
+     * @return bool True if successful
+     */
+    public function updateRetentionPolicy(int $policyId, int $retentionDays, bool $autoPurge, bool $legalHold): bool
+    {
+        return $this->auditRepo->updateRetentionPolicy($policyId, $retentionDays, $autoPurge, $legalHold);
+    }
+
+    /**
+     * Purge old logs based on retention policies (delegates to repository)
+     * 
+     * @return int Number of logs purged
+     */
+    public function purgeOldLogs(): int
+    {
+        return $this->auditRepo->purgeOldLogs();
+    }
 }
 

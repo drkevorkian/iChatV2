@@ -97,7 +97,7 @@ All API endpoints require `X-API-SECRET` header (except proxy which handles it s
 - **User View**: Room pulse dashboard, message composer, pending outbox
 - **Moderator View**: Flagged messages, moderation tools
 - **Admin View**: Telemetry, escrow requests, system status
-- **Area 51**: Secret view unlocked via Ctrl+Shift+A or header gesture
+- **Area 51**: Secret Area
 
 ## Testing
 
