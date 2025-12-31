@@ -1650,6 +1650,24 @@ body {
     font-weight: 600;
 }
 
+.badge-trusted-admin {
+    background-color: #9b59b6;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-owner {
+    background-color: #e74c3c;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
 .badge-banned {
     background-color: #dc3545;
     color: white;

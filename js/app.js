@@ -2586,6 +2586,8 @@
                 const statusClass = user.is_online ? 'status-online' : 'status-offline';
                 const statusText = user.is_online ? '● Online' : '○ Offline';
                 const roleBadge = user.is_guest ? '<span class="badge-guest">Guest</span>' : 
+                                 user.role === 'owner' ? '<span class="badge-owner">Owner</span>' :
+                                 user.role === 'trusted_admin' ? '<span class="badge-trusted-admin">Trusted Admin</span>' :
                                  user.role === 'administrator' ? '<span class="badge-admin">Admin</span>' :
                                  user.role === 'moderator' ? '<span class="badge-mod">Mod</span>' :
                                  '<span class="badge-user">User</span>';

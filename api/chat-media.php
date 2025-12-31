@@ -14,6 +14,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
 use iChat\Services\AuditService;
+use iChat\Services\RBACService;
 use iChat\Database;
 
 header('Content-Type: application/json');
@@ -46,6 +47,15 @@ try {
             // Upload media files
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('Invalid method for upload action');
+            }
+            
+            // Check RBAC permission
+            $rbacService = new RBACService();
+            $userRole = $currentUser['role'] ?? 'guest';
+            if (!$rbacService->hasPermission($userRole, 'chat.upload_media')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to upload media.']);
+                exit;
             }
             
             if (empty($_FILES['files'])) {

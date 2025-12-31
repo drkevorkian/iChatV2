@@ -124,7 +124,13 @@ try {
             break;
             
         case 'start':
-            // Start WebSocket server
+            // Start WebSocket server - SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'admin.manage_websocket')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to start WebSocket servers']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('POST method required');
             }
@@ -138,7 +144,13 @@ try {
             break;
             
         case 'stop':
-            // Stop WebSocket server
+            // Stop WebSocket server - SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'admin.manage_websocket')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to stop WebSocket servers']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('POST method required');
             }
@@ -151,7 +163,13 @@ try {
             break;
             
         case 'restart':
-            // Restart WebSocket server (truly non-blocking - returns immediately)
+            // Restart WebSocket server - SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'admin.manage_websocket')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to restart WebSocket servers']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('POST method required');
             }

@@ -4,7 +4,7 @@
  * 
  * Provides endpoints for managing users: viewing online users,
  * kicking, muting, banning, sending IMs, etc.
- * Requires administrator or moderator access.
+ * Requires administrator, trusted_admin, owner, or moderator access.
  */
 
 declare(strict_types=1);
@@ -57,16 +57,16 @@ try {
 // Check API secret (for proxy calls)
 if ($security->validateApiSecret()) {
     $isAuthorized = true;
-    // If API secret is valid, check if current user is admin
-    if ($currentUser !== null && $currentUser['role'] === 'administrator') {
+    // If API secret is valid, check if current user is admin (administrator, trusted_admin, or owner)
+    if ($currentUser !== null && in_array($currentUser['role'], ['administrator', 'trusted_admin', 'owner'], true)) {
         $isAdmin = true;
     }
 }
 
-// Allow if user is administrator or moderator
-if (in_array($userRole, ['administrator', 'moderator'], true)) {
+// Allow if user is administrator, trusted_admin, owner, or moderator
+if (in_array($userRole, ['administrator', 'trusted_admin', 'owner', 'moderator'], true)) {
     $isAuthorized = true;
-    if ($userRole === 'administrator') {
+    if (in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)) {
         $isAdmin = true;
     }
 }
@@ -79,7 +79,7 @@ if ($currentUser === null && getenv('APP_ENV') === 'development') {
 
 if (!$isAuthorized) {
     http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized - Administrator or Moderator access required']);
+    echo json_encode(['error' => 'Unauthorized - Administrator, Trusted Admin, Owner, or Moderator access required']);
     exit;
 }
 
@@ -112,10 +112,10 @@ try {
             break;
             
         case 'all':
-            // Get all users (online and offline) - admin only
-            if (!$isAdmin && $userRole !== 'administrator') {
+            // Get all users (online and offline) - admin only (administrator, trusted_admin, or owner)
+            if (!$isAdmin && !in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)) {
                 http_response_code(403);
-                echo json_encode(['error' => 'Forbidden - Administrator access required']);
+                echo json_encode(['error' => 'Forbidden - Administrator, Trusted Admin, or Owner access required']);
                 exit;
             }
             
@@ -179,7 +179,14 @@ try {
             break;
             
         case 'kick':
-            // Kick user from room
+            // Kick user from room - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.kick_user')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to kick users']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
@@ -225,7 +232,14 @@ try {
             break;
             
         case 'mute':
-            // Mute user
+            // Mute user - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.mute_user')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to mute users']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
@@ -278,7 +292,14 @@ try {
             break;
             
         case 'ban':
-            // Ban user
+            // Ban user - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.ban_user')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to ban users']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
@@ -360,7 +381,14 @@ try {
             break;
             
         case 'unban':
-            // Unban user
+            // Unban user - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.unban_user')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to unban users']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
@@ -480,7 +508,14 @@ try {
             break;
             
         case 'update-role':
-            // Update user role
+            // Update user role - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'admin.manage_users')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to change user roles']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
@@ -508,13 +543,6 @@ try {
             $allowedRoles = ['user', 'moderator', 'administrator', 'trusted_admin', 'owner'];
             if (!in_array($newRole, $allowedRoles, true)) {
                 throw new \InvalidArgumentException('Invalid role');
-            }
-            
-            // Only administrators, trusted admins, and owners can change roles
-            if (!in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)) {
-                http_response_code(403);
-                echo json_encode(['error' => 'Insufficient permissions']);
-                exit;
             }
             
             // Get current user info for audit

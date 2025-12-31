@@ -109,10 +109,11 @@ try {
             break;
             
         case 'delete':
-            // Delete a message (admin only)
-            if ($userRole !== 'administrator') {
+            // Delete a message - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.delete_message')) {
                 http_response_code(403);
-                echo json_encode(['error' => 'Forbidden - Administrator access required']);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to delete messages']);
                 exit;
             }
             
@@ -168,7 +169,14 @@ try {
             break;
             
         case 'edit':
-            // Edit a message (moderator and admin)
+            // Edit a message - SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.edit_message')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to edit messages']);
+                exit;
+            }
+            
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
@@ -230,10 +238,11 @@ try {
             break;
             
         case 'mock':
-            // Create a mock message (admin only - impersonate another user)
-            if ($userRole !== 'administrator') {
+            // Create a mock message - SECURITY: Check RBAC permission (admin only - impersonate another user)
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.edit_message')) {
                 http_response_code(403);
-                echo json_encode(['error' => 'Forbidden - Administrator access required']);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to create mock messages']);
                 exit;
             }
             

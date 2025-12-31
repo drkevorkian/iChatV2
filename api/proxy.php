@@ -41,7 +41,7 @@ if (empty($path)) {
 // all original query parameters from the request
 
 // Validate path to prevent SSRF attacks
-$allowedPaths = ['messages', 'im', 'admin', 'presence', 'sync', 'patch-log', 'patch-status', 'patch-apply', 'db-repair', 'user-management', 'profile', 'auth', 'moderate', 'room-requests', 'reports', 'admin-notifications', 'pinky-brain', 'log-viewer', 'emojis', 'file-storage', 'mail', 'settings', 'chat-media', 'avatars', 'word-filter', 'websocket-admin', 'audit'];
+$allowedPaths = ['messages', 'im', 'admin', 'presence', 'sync', 'patch-log', 'patch-status', 'patch-apply', 'db-repair', 'user-management', 'profile', 'auth', 'moderate', 'room-requests', 'reports', 'admin-notifications', 'pinky-brain', 'log-viewer', 'emojis', 'file-storage', 'mail', 'settings', 'chat-media', 'avatars', 'word-filter', 'websocket-admin', 'audit', 'rbac'];
 $pathParts = explode('/', trim($path, '/'));
 $basePath = $pathParts[0] ?? '';
 

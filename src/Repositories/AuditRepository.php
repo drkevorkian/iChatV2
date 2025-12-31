@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace iChat\Repositories;
 
 use iChat\Database;
-use iChat\DatabaseHealth;
+use iChat\Services\DatabaseHealth;
 
 class AuditRepository
 {

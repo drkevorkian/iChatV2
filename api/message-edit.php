@@ -15,6 +15,7 @@ use iChat\Repositories\ImRepository;
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
 use iChat\Services\AuditService;
+use iChat\Services\RBACService;
 
 header('Content-Type: application/json');
 
@@ -68,12 +69,23 @@ try {
                 throw new \InvalidArgumentException('Invalid parameters');
             }
 
-            // Check if message can be edited (not permanent, user owns it or is moderator)
+            // Check if message can be edited (not permanent, user owns it or has moderation permission)
+            $rbacService = new RBACService();
             $canEdit = false;
             if ($messageType === 'room') {
-                $canEdit = $messageRepo->canEditMessage($messageId, $userHandle, $userRole);
-            } else {
-                $canEdit = $imRepo->canEditMessage($messageId, $userHandle, $userRole);
+                $isOwner = $messageRepo->isMessageOwner($messageId, $userHandle);
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.edit_own_message')) {
+                    $canEdit = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.edit_message')) {
+                    $canEdit = true;
+                }
+            } else { // IM message
+                $isOwner = $imRepo->isMessageOwner($messageId, $userHandle);
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.edit_own_message')) {
+                    $canEdit = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.edit_message')) {
+                    $canEdit = true;
+                }
             }
 
             if (!$canEdit) {
@@ -160,11 +172,22 @@ try {
             }
 
             // Check if message can be deleted
+            $rbacService = new RBACService();
             $canDelete = false;
             if ($messageType === 'room') {
-                $canDelete = $messageRepo->canDeleteMessage($messageId, $userHandle, $userRole);
-            } else {
-                $canDelete = $imRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+                $isOwner = $messageRepo->isMessageOwner($messageId, $userHandle);
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.delete_own_message')) {
+                    $canDelete = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.delete_message')) {
+                    $canDelete = true;
+                }
+            } else { // IM message
+                $isOwner = $imRepo->isMessageOwner($messageId, $userHandle);
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.delete_own_message')) {
+                    $canDelete = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.delete_message')) {
+                    $canDelete = true;
+                }
             }
 
             if (!$canDelete) {
@@ -177,10 +200,12 @@ try {
             }
 
             // Delete the message (soft delete)
+            // Check if user has moderation permission (for permanent delete capability)
+            $hasModerationPermission = $rbacService->hasPermission($userRole, 'moderation.delete_message');
             if ($messageType === 'room') {
-                $success = $messageRepo->deleteMessage($messageId, $userHandle, $userRole === 'moderator' || $userRole === 'administrator');
+                $success = $messageRepo->deleteMessage($messageId, $userHandle, $hasModerationPermission);
             } else {
-                $success = $imRepo->deleteMessage($messageId, $userHandle, $userRole === 'moderator' || $userRole === 'administrator');
+                $success = $imRepo->deleteMessage($messageId, $userHandle, $hasModerationPermission);
             }
 
             if ($success) {
@@ -233,15 +258,34 @@ try {
                 throw new \InvalidArgumentException('Invalid message ID');
             }
 
+            $rbacService = new RBACService();
             $canEdit = false;
             $canDelete = false;
 
             if ($messageType === 'room') {
-                $canEdit = $messageRepo->canEditMessage($messageId, $userHandle, $userRole);
-                $canDelete = $messageRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+                $isOwner = $messageRepo->isMessageOwner($messageId, $userHandle);
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.edit_own_message')) {
+                    $canEdit = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.edit_message')) {
+                    $canEdit = true;
+                }
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.delete_own_message')) {
+                    $canDelete = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.delete_message')) {
+                    $canDelete = true;
+                }
             } else {
-                $canEdit = $imRepo->canEditMessage($messageId, $userHandle, $userRole);
-                $canDelete = $imRepo->canDeleteMessage($messageId, $userHandle, $userRole);
+                $isOwner = $imRepo->isMessageOwner($messageId, $userHandle);
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.edit_own_message')) {
+                    $canEdit = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.edit_message')) {
+                    $canEdit = true;
+                }
+                if ($isOwner && $rbacService->hasPermission($userRole, 'chat.delete_own_message')) {
+                    $canDelete = true;
+                } elseif ($rbacService->hasPermission($userRole, 'moderation.delete_message')) {
+                    $canDelete = true;
+                }
             }
 
             echo json_encode([

@@ -139,7 +139,7 @@ $defaultRoom = $config->get('ui.default_room');
                 <?php if ($currentUser !== null && in_array($userRole, ['moderator', 'administrator'], true)): ?>
                 <button class="nav-btn" data-view="moderator">Moderator</button>
                 <?php endif; ?>
-                <?php if ($currentUser !== null && $userRole === 'administrator'): ?>
+                <?php if ($currentUser !== null && in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)): ?>
                 <button class="nav-btn" data-view="admin">Admin</button>
                 <?php endif; ?>
                 <?php if ($area51Unlocked): ?>
@@ -707,7 +707,7 @@ $defaultRoom = $config->get('ui.default_room');
         <?php endif; ?>
 
         <!-- Admin View -->
-        <?php if ($currentUser !== null && $userRole === 'administrator'): ?>
+        <?php if ($currentUser !== null && in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)): ?>
         <div id="admin-view" class="view-container <?php echo $view === 'admin' ? 'active' : ''; ?>">
             <h2>Admin Dashboard</h2>
             
@@ -762,6 +762,9 @@ $defaultRoom = $config->get('ui.default_room');
                         </button>
                         <button class="admin-subtab-btn" data-tab="audit-logs">
                             <i class="fas fa-clipboard-list"></i> Audit Logs
+                        </button>
+                        <button class="admin-subtab-btn" data-tab="rbac">
+                            <i class="fas fa-user-shield"></i> RBAC Permissions
                         </button>
                     </div>
                     
@@ -1442,6 +1445,56 @@ $defaultRoom = $config->get('ui.default_room');
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- RBAC Permissions Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-rbac">
+                        <div class="rbac-section">
+                            <h3><i class="fas fa-user-shield"></i> Role-Based Access Control (RBAC)</h3>
+                            <p class="section-description">Manage permissions for each role. Trusted Admins can set permissions for Admin, Moderator, User, and Guest roles. Owners can protect permissions with passwords.</p>
+                            
+                            <!-- Role Selector -->
+                            <div class="rbac-role-selector" style="margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <label for="rbac-role-select" style="font-weight: 600;">Select Role:</label>
+                                <select id="rbac-role-select" class="form-control" style="width: auto; padding: 0.5rem 1rem;">
+                                    <option value="guest">Guest</option>
+                                    <option value="user" selected>User</option>
+                                    <option value="moderator">Moderator</option>
+                                    <option value="administrator">Administrator</option>
+                                    <option value="trusted_admin">Trusted Admin</option>
+                                </select>
+                                <button id="rbac-refresh-btn" class="btn-secondary">
+                                    <i class="fas fa-sync"></i> Refresh
+                                </button>
+                                <span id="rbac-status" style="margin-left: auto; color: var(--text-medium); font-size: 0.9rem;"></span>
+                            </div>
+                            
+                            <!-- Permissions by Category -->
+                            <div id="rbac-permissions-container" class="rbac-permissions-container">
+                                <div class="loading-messages">Loading permissions...</div>
+                            </div>
+                            
+                            <!-- Permission Change History -->
+                            <div style="margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
+                                <h4><i class="fas fa-history"></i> Permission Change History</h4>
+                                <div class="rbac-history-controls" style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                    <select id="rbac-history-role-filter" class="form-control" style="width: auto;">
+                                        <option value="">All Roles</option>
+                                        <option value="guest">Guest</option>
+                                        <option value="user">User</option>
+                                        <option value="moderator">Moderator</option>
+                                        <option value="administrator">Administrator</option>
+                                        <option value="trusted_admin">Trusted Admin</option>
+                                    </select>
+                                    <button id="rbac-history-refresh-btn" class="btn-secondary">
+                                        <i class="fas fa-sync"></i> Refresh History
+                                    </button>
+                                </div>
+                                <div id="rbac-history-list" class="rbac-history-list">
+                                    <div class="loading-messages">Loading history...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1863,6 +1916,7 @@ $defaultRoom = $config->get('ui.default_room');
     <script src="/iChat/js/rich-previews.js"></script>
     <script src="/iChat/js/ai-systems-admin.js"></script>
     <script src="/iChat/js/audit-logs-admin.js"></script>
+    <script src="/iChat/js/rbac-admin.js"></script>
     <script src="/iChat/js/app.js"></script>
 </body>
 </html>

@@ -32,7 +32,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Allow if user is administrator (for web interface)
-if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'administrator') {
+if (isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], ['administrator', 'trusted_admin', 'owner'], true)) {
     $isAuthorized = true;
 }
 

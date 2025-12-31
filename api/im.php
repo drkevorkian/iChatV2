@@ -15,6 +15,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use iChat\Repositories\ImRepository;
 use iChat\Services\SecurityService;
 use iChat\Services\AuditService;
+use iChat\Services\RBACService;
 use iChat\Services\AuthService;
 
 header('Content-Type: application/json');
@@ -78,6 +79,17 @@ try {
             
             if (!$security->validateHandle($fromUser) || !$security->validateHandle($toUser)) {
                 throw new \InvalidArgumentException('Invalid user handle format');
+            }
+            
+            // Check RBAC permission
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $userRole = $currentUser['role'] ?? 'guest';
+            if (!$rbacService->hasPermission($userRole, 'im.send_im')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Permission denied - You do not have permission to send instant messages.']);
+                exit;
             }
             
             // SECURITY: Validate cipher_blob (for E2EE, it's JSON, for fallback it's base64)

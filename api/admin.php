@@ -15,6 +15,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use iChat\Repositories\MessageRepository;
 use iChat\Repositories\EscrowRepository;
 use iChat\Services\SecurityService;
+use iChat\Services\RBACService;
 
 header('Content-Type: application/json');
 
@@ -28,6 +29,17 @@ $action = $_GET['action'] ?? '';
 if (!$security->validateApiSecret()) {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
+    exit;
+}
+
+// Check RBAC permission for admin dashboard access
+$authService = new \iChat\Services\AuthService();
+$currentUser = $authService->getCurrentUser();
+$userRole = $currentUser['role'] ?? 'guest';
+$rbacService = new RBACService();
+if (!$rbacService->hasPermission($userRole, 'admin.access_dashboard')) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Forbidden - Admin dashboard access required']);
     exit;
 }
 

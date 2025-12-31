@@ -17,6 +17,7 @@ use iChat\Repositories\UserManagementRepository;
 use iChat\Services\SecurityService;
 use iChat\Services\AuditService;
 use iChat\Services\AuthService;
+use iChat\Services\RBACService;
 
 header('Content-Type: application/json');
 
@@ -122,6 +123,9 @@ try {
         case 'list':
         case 'online':
             // Get online users for a room
+            // Note: All users can view online users in rooms they're in
+            // This permission check can be added later if needed
+            
             if ($method !== 'GET') {
                 throw new \InvalidArgumentException('Invalid method for list action');
             }

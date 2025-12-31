@@ -22,6 +22,7 @@ use iChat\Services\PinkyBrainService;
 use iChat\Services\AuthService;
 use iChat\Services\AIService;
 use iChat\Services\AuditService;
+use iChat\Services\RBACService;
 
 header('Content-Type: application/json');
 
@@ -45,19 +46,26 @@ try {
     switch ($method) {
         case 'GET':
             // Get pending messages
+            // Check RBAC permission for viewing messages
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $userRole = $currentUser['role'] ?? 'guest';
+            if (!$rbacService->hasPermission($userRole, 'message.view')) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Permission denied - You do not have permission to view messages.']);
+                exit;
+            }
+            
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
             $limit = max(1, min(1000, $limit)); // Sanitize limit
             
             // Optional room filter
             $roomId = isset($_GET['room_id']) ? $security->sanitizeInput($_GET['room_id']) : null;
             
-            // Check if user is moderator/admin (to include hidden messages)
+            // Check if user has moderation permission (to include hidden messages)
             $includeHidden = false;
-            if (session_status() === PHP_SESSION_NONE) {
-                session_start();
-            }
-            $userRole = $_SESSION['user_role'] ?? 'guest';
-            if (in_array($userRole, ['moderator', 'administrator'], true)) {
+            if ($rbacService->hasPermission($userRole, 'moderation.view_reports')) {
                 $includeHidden = isset($_GET['include_hidden']) && $_GET['include_hidden'] === '1';
             }
             
@@ -89,6 +97,21 @@ try {
             
         case 'POST':
             // Enqueue a new message
+            // SECURITY: Check RBAC permission - user must have chat.send_message permission
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            if (!$rbacService->hasPermission($userRole, 'chat.send_message')) {
+                http_response_code(403);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Permission denied - You do not have permission to send messages'
+                ]);
+                exit;
+            }
+            
             // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
             $rawInput = file_get_contents('php://input');
             if ($rawInput === false) {
@@ -297,14 +320,14 @@ try {
             
         case 'DELETE':
             // Delete a message (soft delete)
-            // Check if user is moderator/admin
-            if (session_status() === PHP_SESSION_NONE) {
-                session_start();
-            }
-            $userRole = $_SESSION['user_role'] ?? 'guest';
-            if (!in_array($userRole, ['moderator', 'administrator'], true)) {
+            // Check RBAC permission
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $userRole = $currentUser['role'] ?? 'guest';
+            if (!$rbacService->hasPermission($userRole, 'moderation.delete_message')) {
                 http_response_code(403);
-                echo json_encode(['error' => 'Access denied. Moderator or Admin privileges required.']);
+                echo json_encode(['error' => 'Access denied. You do not have permission to delete messages.']);
                 exit;
             }
             
