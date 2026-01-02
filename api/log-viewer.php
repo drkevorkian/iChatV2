@@ -5,8 +5,8 @@
  * Provides API endpoints to view current and archived log files.
  * Supports both regular and gzipped log files.
  * 
- * Security: Only accessible to authenticated admin and moderator users.
- * Both roles can read logs and manually compress/rotate them.
+ * Security: Only accessible to authenticated admin, moderator, trusted admin, and owner users.
+ * All authorized roles can read logs and manually compress/rotate them.
  */
 
 declare(strict_types=1);
@@ -22,13 +22,13 @@ header('Content-Type: application/json');
 $security = new SecurityService();
 $security->setSecurityHeaders();
 
-// Check authentication - allow both admins and moderators
+// Check authentication - allow admins, moderators, trusted admins, and owners
 $authService = new AuthService();
 $user = $authService->getCurrentUser();
 
-if (!$user || !in_array($user['role'], ['administrator', 'admin', 'moderator'], true)) {
+if (!$user || !in_array($user['role'], ['administrator', 'admin', 'moderator', 'owner', 'trusted_admin'], true)) {
     http_response_code(403);
-    echo json_encode(['error' => 'Access denied. Admin or Moderator privileges required.']);
+    echo json_encode(['error' => 'Access denied. Admin, Moderator, Trusted Admin, or Owner privileges required.']);
     exit;
 }
 

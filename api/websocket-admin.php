@@ -13,6 +13,7 @@ require_once __DIR__ . '/../bootstrap.php';
 
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
+use iChat\Services\RBACService;
 
 header('Content-Type: application/json');
 
@@ -34,6 +35,9 @@ if (!$currentUser || !in_array($userRole, ['administrator', 'owner', 'trusted_ad
     echo json_encode(['error' => 'Admin access required']);
     exit;
 }
+
+// Initialize RBAC service for permission checks
+$rbacService = new RBACService();
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? 'status';
@@ -1492,30 +1496,77 @@ function stopPythonServer(string $pidFile): array {
 
 /**
  * Fetch Python server stats
+ * Uses cURL for better connection handling and timeout control
  */
 function fetchPythonServerStats(string $host, int $port): ?array {
-    // Skip the fsockopen test - it's unreliable and generates warnings
-    // Just try to fetch the stats directly
     $url = "http://{$host}:{$port}/stats";
-    $context = stream_context_create([
-        'http' => [
-            'timeout' => 1.0, // Increased timeout slightly
-            'method' => 'GET',
-            'header' => 'Connection: close\r\n',
-            'ignore_errors' => true
-        ]
-    ]);
     
-    // Suppress all warnings/errors for this operation
-    $oldErrorReporting = error_reporting(0);
-    $oldDisplayErrors = ini_get('display_errors');
-    ini_set('display_errors', '0');
-    
-    $response = @file_get_contents($url, false, $context);
-    
-    // Restore error reporting
-    error_reporting($oldErrorReporting);
-    ini_set('display_errors', $oldDisplayErrors);
+    // Use cURL for better connection control and timeout handling
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 2, // 2 second timeout
+            CURLOPT_CONNECTTIMEOUT => 1, // 1 second connection timeout
+            CURLOPT_FRESH_CONNECT => true, // Force new connection (no reuse)
+            CURLOPT_FORBID_REUSE => true, // Don't reuse connection
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_HTTPHEADER => [
+                'Connection: close', // Explicitly close connection
+                'User-Agent: Sentinel-Chat-Admin/1.0'
+            ],
+            CURLOPT_NOSIGNAL => 1, // Don't use signals (important for timeout)
+        ]);
+        
+        $response = @curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        
+        if ($response === false || !empty($curlError) || $httpCode !== 200) {
+            return null;
+        }
+    } else {
+        // Fallback to file_get_contents if cURL not available
+        // Use stream context with very short timeout to prevent hanging
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 1.5, // 1.5 second timeout (shorter to prevent hanging)
+                'method' => 'GET',
+                'header' => [
+                    'Connection: close',
+                    'User-Agent: Sentinel-Chat-Admin/1.0'
+                ],
+                'ignore_errors' => true,
+                'protocol_version' => '1.1'
+            ],
+            'socket' => [
+                'bindto' => '0:0' // Don't bind to specific interface
+            ]
+        ]);
+        
+        // Suppress all warnings/errors for this operation
+        $oldErrorReporting = error_reporting(0);
+        $oldDisplayErrors = ini_get('display_errors');
+        $oldLogErrors = ini_get('log_errors');
+        ini_set('display_errors', '0');
+        ini_set('log_errors', '0'); // Also suppress error logging
+        
+        // Use stream with timeout to prevent hanging
+        $response = false;
+        $fp = @fopen($url, 'r', false, $context);
+        if ($fp) {
+            stream_set_timeout($fp, 1); // 1 second socket timeout
+            $response = @stream_get_contents($fp);
+            @fclose($fp);
+        }
+        
+        // Restore error reporting
+        error_reporting($oldErrorReporting);
+        ini_set('display_errors', $oldDisplayErrors);
+        ini_set('log_errors', $oldLogErrors);
+    }
     
     if ($response === false || empty($response)) {
         return null;

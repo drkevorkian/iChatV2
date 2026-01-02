@@ -15,6 +15,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use iChat\Repositories\MailRepository;
 use iChat\Services\SecurityService;
 use iChat\Services\AuthService;
+use iChat\Services\RBACService;
 use iChat\Database;
 
 header('Content-Type: application/json');
@@ -31,6 +32,7 @@ if (session_status() === PHP_SESSION_NONE) {
 $authService = new AuthService();
 $currentUser = $authService->getCurrentUser();
 $userHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+$userRole = $currentUser['role'] ?? 'guest';
 
 if (empty($userHandle)) {
     http_response_code(401);
@@ -41,6 +43,7 @@ if (empty($userHandle)) {
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? '';
 $repository = new MailRepository();
+$rbacService = new RBACService();
 
 try {
     switch ($action) {
@@ -48,6 +51,13 @@ try {
             // Get inbox messages
             if ($method !== 'GET') {
                 throw new \InvalidArgumentException('Invalid method for inbox action');
+            }
+            
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
             }
             
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
@@ -68,6 +78,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for sent action');
             }
             
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
+            }
+            
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
             $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
             
@@ -84,6 +101,13 @@ try {
             // Get draft messages
             if ($method !== 'GET') {
                 throw new \InvalidArgumentException('Invalid method for drafts action');
+            }
+            
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
             }
             
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
@@ -104,6 +128,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for trash action');
             }
             
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
+            }
+            
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
             $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
             
@@ -120,6 +151,13 @@ try {
             // Send a mail message
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('Invalid method for send action');
+            }
+            
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.send')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to send mail.']);
+                exit;
             }
             
             $input = json_decode(file_get_contents('php://input'), true);
@@ -237,6 +275,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for upload-attachment action');
             }
             
+            // SECURITY: Check RBAC permission (attachment upload is part of mail.send)
+            if (!$rbacService->hasPermission($userRole, 'mail.send')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to send mail.']);
+                exit;
+            }
+            
             if (empty($_FILES['file'])) {
                 throw new \InvalidArgumentException('No file uploaded');
             }
@@ -311,6 +356,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for link-attachments action');
             }
             
+            // SECURITY: Check RBAC permission (linking attachments is part of mail.send)
+            if (!$rbacService->hasPermission($userRole, 'mail.send')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to send mail.']);
+                exit;
+            }
+            
             $input = json_decode(file_get_contents('php://input'), true);
             if (!is_array($input)) {
                 throw new \InvalidArgumentException('Invalid JSON input');
@@ -374,6 +426,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for save-draft action');
             }
             
+            // SECURITY: Check RBAC permission (draft is part of mail.send)
+            if (!$rbacService->hasPermission($userRole, 'mail.send')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to send mail.']);
+                exit;
+            }
+            
             $input = json_decode(file_get_contents('php://input'), true);
             
             if (!is_array($input)) {
@@ -405,6 +464,13 @@ try {
             // View a single mail message
             if ($method !== 'GET') {
                 throw new \InvalidArgumentException('Invalid method for view action');
+            }
+            
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
             }
             
             $mailId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -450,6 +516,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for move action');
             }
             
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.manage_folders')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to manage mail folders.']);
+                exit;
+            }
+            
             $input = json_decode(file_get_contents('php://input'), true);
             
             if (!is_array($input)) {
@@ -490,6 +563,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for delete action');
             }
             
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.delete')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to delete mail.']);
+                exit;
+            }
+            
             $input = json_decode(file_get_contents('php://input'), true);
             
             if (!is_array($input)) {
@@ -522,6 +602,13 @@ try {
             // Permanently delete mail
             if ($method !== 'POST') {
                 throw new \InvalidArgumentException('Invalid method for permanent-delete action');
+            }
+            
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.delete')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to delete mail.']);
+                exit;
             }
             
             $input = json_decode(file_get_contents('php://input'), true);
@@ -558,6 +645,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for star action');
             }
             
+            // SECURITY: Check RBAC permission (starring is part of mail.view)
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
+            }
+            
             $input = json_decode(file_get_contents('php://input'), true);
             
             if (!is_array($input)) {
@@ -592,6 +686,13 @@ try {
                 throw new \InvalidArgumentException('Invalid method for thread action');
             }
             
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
+            }
+            
             $threadId = isset($_GET['thread_id']) ? (int)$_GET['thread_id'] : 0;
             
             if ($threadId <= 0) {
@@ -611,6 +712,13 @@ try {
             // Get unread mail count
             if ($method !== 'GET') {
                 throw new \InvalidArgumentException('Invalid method for unread-count action');
+            }
+            
+            // SECURITY: Check RBAC permission
+            if (!$rbacService->hasPermission($userRole, 'mail.view')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view mail.']);
+                exit;
             }
             
             $count = $repository->getUnreadCount($userHandle);

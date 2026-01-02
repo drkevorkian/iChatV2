@@ -41,6 +41,27 @@ try {
                 throw new \InvalidArgumentException('Invalid user handle');
             }
             
+            // SECURITY: Check RBAC permission and verify user can only view their own inbox
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $currentUserHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            // Verify user can only view their own inbox (unless they have admin permissions)
+            if ($userHandle !== $currentUserHandle && !$rbacService->hasPermission($userRole, 'admin.manage_users')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You can only view your own inbox.']);
+                exit;
+            }
+            
+            // Check RBAC permission for IM inbox viewing
+            if (!$rbacService->hasPermission($userRole, 'im.view_inbox')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view IM inbox.']);
+                exit;
+            }
+            
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
             $messages = $repository->getInbox($userHandle, $limit);
             
@@ -187,6 +208,27 @@ try {
                 throw new \InvalidArgumentException('Invalid parameters');
             }
             
+            // SECURITY: Check RBAC permission and verify user can only mark their own conversations as read
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $currentUserHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            // Verify user can only mark their own conversations as read (unless they have admin permissions)
+            if ($userHandle !== $currentUserHandle && !$rbacService->hasPermission($userRole, 'admin.manage_users')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You can only mark your own conversations as read.']);
+                exit;
+            }
+            
+            // Check RBAC permission for IM inbox viewing
+            if (!$rbacService->hasPermission($userRole, 'im.view_inbox')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view IM conversations.']);
+                exit;
+            }
+            
             $count = $repository->markConversationAsRead($userHandle, $otherUser);
             
             echo json_encode([
@@ -213,10 +255,20 @@ try {
             
             $messageId = (int)($input['message_id'] ?? 0);
             $fromUser = $security->sanitizeInput($input['from_user'] ?? '');
-            $userHandle = $auth->getCurrentUser()['username'] ?? '';
+            $currentUser = $authService->getCurrentUser();
+            $userHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+            $userRole = $currentUser['role'] ?? 'guest';
             
             if ($messageId <= 0 || empty($fromUser)) {
                 throw new \InvalidArgumentException('Invalid parameters');
+            }
+            
+            // SECURITY: Check RBAC permission for IM inbox viewing
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'im.view_inbox')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view IM conversations.']);
+                exit;
             }
             
             $success = $repository->markMessageAsRead($messageId, $userHandle, $fromUser);
@@ -238,6 +290,27 @@ try {
                 throw new \InvalidArgumentException('Invalid user handle');
             }
             
+            // SECURITY: Check RBAC permission and verify user can only view their own badge
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $currentUserHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            // Verify user can only view their own badge (unless they have admin permissions)
+            if ($userHandle !== $currentUserHandle && !$rbacService->hasPermission($userRole, 'admin.manage_users')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You can only view your own unread count.']);
+                exit;
+            }
+            
+            // Check RBAC permission for IM inbox viewing
+            if (!$rbacService->hasPermission($userRole, 'im.view_inbox')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view IM inbox.']);
+                exit;
+            }
+            
             $count = $repository->getUnreadConversationsCount($userHandle);
             
             echo json_encode([
@@ -256,6 +329,27 @@ try {
             
             if (empty($userHandle) || !$security->validateHandle($userHandle)) {
                 throw new \InvalidArgumentException('Invalid user handle');
+            }
+            
+            // SECURITY: Check RBAC permission and verify user can only view their own conversations
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $currentUserHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            // Verify user can only view their own conversations (unless they have admin permissions)
+            if ($userHandle !== $currentUserHandle && !$rbacService->hasPermission($userRole, 'admin.manage_users')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You can only view your own conversations.']);
+                exit;
+            }
+            
+            // Check RBAC permission for IM inbox viewing
+            if (!$rbacService->hasPermission($userRole, 'im.view_inbox')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view IM conversations.']);
+                exit;
             }
             
             $conversations = $repository->getConversations($userHandle);
@@ -279,6 +373,27 @@ try {
             
             if (empty($userHandle) || empty($otherUser) || !$security->validateHandle($userHandle) || !$security->validateHandle($otherUser)) {
                 throw new \InvalidArgumentException('Invalid user handles');
+            }
+            
+            // SECURITY: Check RBAC permission and verify user can only view their own conversations
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $currentUserHandle = $currentUser['username'] ?? $_SESSION['user_handle'] ?? '';
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            // Verify user can only view their own conversations (unless they have admin permissions)
+            if ($userHandle !== $currentUserHandle && !$rbacService->hasPermission($userRole, 'admin.manage_users')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You can only view your own conversations.']);
+                exit;
+            }
+            
+            // Check RBAC permission for IM inbox viewing
+            if (!$rbacService->hasPermission($userRole, 'im.view_inbox')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view IM conversations.']);
+                exit;
             }
             
             $messages = $repository->getConversationMessages($userHandle, $otherUser, $limit);

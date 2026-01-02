@@ -8835,6 +8835,7 @@
                 $('#python-port').text(response.port || pythonServer.port || '-');
                 $('#python-pid').text(response.pid || pythonServer.pid || '-');
                 $('#python-uptime').text(response.uptime || pythonServer.uptime || 'Unknown');
+                $('#python-connections').text(response.connected_clients ?? pythonServer.connected_clients ?? 0);
                 $('#python-node-restarts').text(response.node_restarts || pythonServer.node_restarts || nodeServer.restart_count || 0);
 
                 $('#python-start-btn').prop('disabled', true);
@@ -8847,6 +8848,7 @@
                 $('#python-port').text(response.port || '-');
                 $('#python-pid').text('-');
                 $('#python-uptime').text('-');
+                $('#python-connections').text('-');
                 $('#python-node-restarts').text('-');
 
                 $('#python-start-btn').prop('disabled', false);

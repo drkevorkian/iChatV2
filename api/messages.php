@@ -97,21 +97,6 @@ try {
             
         case 'POST':
             // Enqueue a new message
-            // SECURITY: Check RBAC permission - user must have chat.send_message permission
-            $rbacService = new RBACService();
-            $authService = new AuthService();
-            $currentUser = $authService->getCurrentUser();
-            $userRole = $currentUser['role'] ?? 'guest';
-            
-            if (!$rbacService->hasPermission($userRole, 'chat.send_message')) {
-                http_response_code(403);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'Permission denied - You do not have permission to send messages'
-                ]);
-                exit;
-            }
-            
             // SECURITY: Secure JSON parsing with error checking to prevent injection attacks
             $rawInput = file_get_contents('php://input');
             if ($rawInput === false) {
@@ -144,6 +129,40 @@ try {
             
             if (!$security->validateHandle($senderHandle)) {
                 throw new \InvalidArgumentException('Invalid sender handle format');
+            }
+            
+            // SECURITY: Check RBAC permission - user must have chat.send_message permission
+            // For bots: verify the sender_handle exists and has permission
+            // For regular users: check session-based authentication
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            // If no session user, try to get user by handle (for bot authentication)
+            if (empty($currentUser) || ($currentUser['username'] ?? '') !== $senderHandle) {
+                $authRepo = new \iChat\Repositories\AuthRepository();
+                $senderUser = $authRepo->getUserByUsernameOrEmail($senderHandle);
+                if ($senderUser) {
+                    $userRole = $senderUser['role'] ?? 'guest';
+                } else {
+                    // Sender handle doesn't exist in database
+                    http_response_code(403);
+                    echo json_encode([
+                        'success' => false,
+                        'error' => 'Invalid sender handle - user does not exist'
+                    ]);
+                    exit;
+                }
+            }
+            
+            if (!$rbacService->hasPermission($userRole, 'chat.send_message')) {
+                http_response_code(403);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Permission denied - You do not have permission to send messages'
+                ]);
+                exit;
             }
             
             // Check if user is banned

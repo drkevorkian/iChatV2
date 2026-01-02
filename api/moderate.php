@@ -40,10 +40,10 @@ if ($currentUser === null) {
 $userRole = $currentUser['role'] ?? 'guest';
 $userHandle = $currentUser['username'] ?? '';
 
-// Only allow moderators and administrators
-if (!in_array($userRole, ['moderator', 'administrator'], true)) {
+// Only allow moderators, administrators, trusted admins, and owners
+if (!in_array($userRole, ['moderator', 'administrator', 'trusted_admin', 'owner'], true)) {
     http_response_code(403);
-    echo json_encode(['error' => 'Forbidden - Moderator or Administrator access required']);
+    echo json_encode(['error' => 'Forbidden - Moderator, Administrator, Trusted Admin, or Owner access required']);
     exit;
 }
 
@@ -56,10 +56,18 @@ $auditService = new AuditService();
 try {
     switch ($action) {
         case 'hide':
-            // Hide a message (moderator and admin)
+            // Hide a message - SECURITY: Check RBAC permission
             if ($method !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['error' => 'POST method required']);
+                exit;
+            }
+            
+            // SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            if (!$rbacService->hasPermission($userRole, 'moderation.hide_message')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to hide messages']);
                 exit;
             }
             

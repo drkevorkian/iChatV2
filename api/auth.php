@@ -125,9 +125,9 @@ try {
                 $auditService->logLogout($userHandle, $userId);
             }
             
-            // Clear PHP session
-            session_destroy();
+            // Clear PHP session (clear array first, then destroy)
             $_SESSION = [];
+            session_destroy();
             
             echo json_encode([
                 'success' => $success,

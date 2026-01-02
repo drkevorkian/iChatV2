@@ -126,7 +126,17 @@ INSERT INTO `rbac_permissions` (`permission_key`, `category`, `action`, `descrip
 ('im.send', 'say', 'send', 'Send instant messages', 1),
 ('im.send_im', 'say', 'send', 'Send instant messages', 1),
 ('im.view', 'see', 'view', 'View instant messages', 1),
+('im.view_inbox', 'see', 'view_inbox', 'View IM inbox/conversations', 1),
 ('im.delete', 'do', 'delete', 'Delete instant messages', 1),
+
+-- Mail permissions
+('mail.send', 'say', 'send', 'Send mail messages', 1),
+('mail.view', 'see', 'view', 'View mail messages', 1),
+('mail.delete', 'do', 'delete', 'Delete mail messages', 1),
+('mail.manage_folders', 'do', 'manage_folders', 'Move mail between folders', 1),
+
+-- Presence permissions
+('presence.view_online', 'see', 'view_online', 'View online users list', 1),
 
 -- Settings permissions
 ('settings.change', 'do', 'change', 'Change own settings', 1),
@@ -153,28 +163,28 @@ ON DUPLICATE KEY UPDATE `allowed` = VALUES(`allowed`);
 INSERT INTO `rbac_role_permissions` (`role`, `permission_id`, `allowed`, `set_by_username`)
 SELECT 'user', `id`, `default_value`, 'system'
 FROM `rbac_permissions`
-WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.delete', 'settings.change', 'profile.edit')
+WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.view_inbox', 'im.delete', 'mail.send', 'mail.view', 'mail.delete', 'mail.manage_folders', 'presence.view_online', 'settings.change', 'profile.edit')
 ON DUPLICATE KEY UPDATE `allowed` = VALUES(`allowed`);
 
 -- Moderators: user permissions + moderation
 INSERT INTO `rbac_role_permissions` (`role`, `permission_id`, `allowed`, `set_by_username`)
 SELECT 'moderator', `id`, 1, 'system'
 FROM `rbac_permissions`
-WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.delete', 'settings.change', 'profile.edit', 'message.moderate', 'moderation.hide_message', 'moderation.delete_message', 'moderation.edit_message', 'moderation.view_reports', 'user.kick', 'moderation.kick_user', 'user.mute', 'moderation.mute_user', 'room.invite')
+WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.view_inbox', 'im.delete', 'mail.send', 'mail.view', 'mail.delete', 'mail.manage_folders', 'presence.view_online', 'settings.change', 'profile.edit', 'message.moderate', 'moderation.hide_message', 'moderation.delete_message', 'moderation.edit_message', 'moderation.view_reports', 'user.kick', 'moderation.kick_user', 'user.mute', 'moderation.mute_user', 'room.invite')
 ON DUPLICATE KEY UPDATE `allowed` = VALUES(`allowed`);
 
 -- Administrators: moderator permissions + admin features
 INSERT INTO `rbac_role_permissions` (`role`, `permission_id`, `allowed`, `set_by_username`)
 SELECT 'administrator', `id`, 1, 'system'
 FROM `rbac_permissions`
-WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.delete', 'settings.change', 'profile.edit', 'message.moderate', 'moderation.hide_message', 'moderation.delete_message', 'moderation.edit_message', 'moderation.view_reports', 'user.kick', 'moderation.kick_user', 'user.mute', 'moderation.mute_user', 'user.ban', 'moderation.ban_user', 'user.unban', 'moderation.unban_user', 'room.create', 'room.invite', 'room.delete', 'message.edit_others', 'admin.view', 'admin.access_dashboard', 'admin.view_users', 'admin.view_logs', 'admin.view_audit', 'admin.manage_users', 'admin.manage_websocket', 'system.view_status', 'rbac.view')
+WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.view_inbox', 'im.delete', 'mail.send', 'mail.view', 'mail.delete', 'mail.manage_folders', 'presence.view_online', 'settings.change', 'profile.edit', 'message.moderate', 'moderation.hide_message', 'moderation.delete_message', 'moderation.edit_message', 'moderation.view_reports', 'user.kick', 'moderation.kick_user', 'user.mute', 'moderation.mute_user', 'user.ban', 'moderation.ban_user', 'user.unban', 'moderation.unban_user', 'room.create', 'room.invite', 'room.delete', 'message.edit_others', 'admin.view', 'admin.access_dashboard', 'admin.view_users', 'admin.view_logs', 'admin.view_audit', 'admin.manage_users', 'admin.manage_websocket', 'system.view_status', 'rbac.view')
 ON DUPLICATE KEY UPDATE `allowed` = VALUES(`allowed`);
 
 -- Trusted Admins: administrator permissions + RBAC management
 INSERT INTO `rbac_role_permissions` (`role`, `permission_id`, `allowed`, `set_by_username`)
 SELECT 'trusted_admin', `id`, 1, 'system'
 FROM `rbac_permissions`
-WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.delete', 'settings.change', 'profile.edit', 'message.moderate', 'moderation.hide_message', 'moderation.delete_message', 'moderation.edit_message', 'moderation.view_reports', 'user.kick', 'moderation.kick_user', 'user.mute', 'moderation.mute_user', 'user.ban', 'moderation.ban_user', 'user.unban', 'moderation.unban_user', 'room.create', 'room.invite', 'room.delete', 'message.edit_others', 'admin.view', 'admin.access_dashboard', 'admin.view_users', 'admin.view_logs', 'admin.view_audit', 'admin.manage_users', 'admin.manage_websocket', 'system.view_status', 'rbac.view', 'rbac.manage', 'user.role_change', 'settings.change_others', 'profile.edit_others', 'system.restart_websocket')
+WHERE `permission_key` IN ('message.send', 'chat.send_message', 'message.edit', 'chat.edit_own_message', 'message.delete', 'chat.delete_own_message', 'message.reply', 'message.mention', 'message.view', 'user.view', 'user.view_online', 'room.join', 'room.leave', 'file.upload', 'chat.upload_media', 'file.download', 'link.share', 'image.share', 'im.send', 'im.send_im', 'im.view', 'im.view_inbox', 'im.delete', 'mail.send', 'mail.view', 'mail.delete', 'mail.manage_folders', 'presence.view_online', 'settings.change', 'profile.edit', 'message.moderate', 'moderation.hide_message', 'moderation.delete_message', 'moderation.edit_message', 'moderation.view_reports', 'user.kick', 'moderation.kick_user', 'user.mute', 'moderation.mute_user', 'user.ban', 'moderation.ban_user', 'user.unban', 'moderation.unban_user', 'room.create', 'room.invite', 'room.delete', 'message.edit_others', 'admin.view', 'admin.access_dashboard', 'admin.view_users', 'admin.view_logs', 'admin.view_audit', 'admin.manage_users', 'admin.manage_websocket', 'system.view_status', 'rbac.view', 'rbac.manage', 'user.role_change', 'settings.change_others', 'profile.edit_others', 'system.restart_websocket')
 ON DUPLICATE KEY UPDATE `allowed` = VALUES(`allowed`);
 
 -- Owners: ALL permissions (set all to 1)

@@ -123,9 +123,6 @@ try {
         case 'list':
         case 'online':
             // Get online users for a room
-            // Note: All users can view online users in rooms they're in
-            // This permission check can be added later if needed
-            
             if ($method !== 'GET') {
                 throw new \InvalidArgumentException('Invalid method for list action');
             }
@@ -134,6 +131,18 @@ try {
             
             if (empty($roomId) || !$security->validateRoomId($roomId)) {
                 throw new \InvalidArgumentException('Invalid room ID');
+            }
+            
+            // SECURITY: Check RBAC permission
+            $rbacService = new RBACService();
+            $authService = new AuthService();
+            $currentUser = $authService->getCurrentUser();
+            $userRole = $currentUser['role'] ?? 'guest';
+            
+            if (!$rbacService->hasPermission($userRole, 'presence.view_online')) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Forbidden - You do not have permission to view online users.']);
+                exit;
             }
             
             $users = $repository->getOnlineUsers($roomId);
