@@ -173,6 +173,9 @@ class SecurityService
      * 
      * @return string Client IP address
      */
+
+    /*
+    old function to get client ip address
     public function getClientIp(): string
     {
         // Check for proxy headers first (in order of trustworthiness)
@@ -195,6 +198,57 @@ class SecurityService
         
         // Fallback to REMOTE_ADDR
         return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    }
+    */
+    public function getClientIp(): string
+    {
+        // Always trust REMOTE_ADDR as the ultimate fallback (it's the only header that can't be spoofed by the client)
+        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+        // Helper: Is REMOTE_ADDR a private/reserved IP? (indicates we're behind a proxy/load balancer)
+        $isProxied = filter_var($remoteAddr, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+
+        // Cloudflare-specific check (highest priority - CF headers are cryptographically validated server-side)
+        // We trust CF even if REMOTE_ADDR is public (Cloudflare uses public IPs like 104.x.x.x)
+        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP']) && !empty($_SERVER['HTTP_CF_IPCOUNTRY'])) {
+            $cfIp = trim($_SERVER['HTTP_CF_CONNECTING_IP']);
+            // Only accept valid public IPs (Cloudflare never sends private IPs)
+            if (filter_var($cfIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $cfIp;
+            }
+        }
+
+        // If we're behind a proxy (REMOTE_ADDR is private), trust other proxy headers
+        if ($isProxied) {
+            $proxyHeaders = [
+                'HTTP_X_REAL_IP'       => 'Nginx/Apache proxy (single IP)',
+                'HTTP_X_FORWARDED_FOR' => 'Standard proxy/load balancer chain',
+                'HTTP_CLIENT_IP'       => 'Rare proxy header',
+            ];
+
+            foreach ($proxyHeaders as $header => $description) {
+                if (empty($_SERVER[$header])) {
+                    continue;
+                }
+
+                // Handle multi-IP chains (X-Forwarded-For style) — take the FIRST (original client) IP
+                $ips = array_map('trim', explode(',', $_SERVER[$header]));
+                $ip = reset($ips);  // First IP is the original client (most trusted)
+
+                // Strict validation: must be public IP (no private/reserved ranges)
+                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    return $ip;
+                }
+            }
+        }
+
+        // Final fallback to REMOTE_ADDR (hardest to spoof from the client side)
+        if (filter_var($remoteAddr, FILTER_VALIDATE_IP)) {
+            return $remoteAddr;
+        }
+
+        // Ultimate fallback (should almost never reach here)
+        return '0.0.0.0';
     }
 
     /**

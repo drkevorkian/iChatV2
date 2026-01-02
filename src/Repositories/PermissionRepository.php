@@ -189,6 +189,13 @@ class PermissionRepository
             return null;
         }
 
+        // Check if the table exists first (patch 027 might not be applied)
+        if (!$this->tableExists('rbac_owner_protected')) {
+            // Table doesn't exist - patch 027 not applied or failed
+            // Return null silently (no error logging needed)
+            return null;
+        }
+
         try {
             $sql = 'SELECT * FROM rbac_owner_protected 
                     WHERE permission_id = :permission_id AND role = :role
@@ -199,8 +206,33 @@ class PermissionRepository
                 ':role' => $role
             ]);
         } catch (\Exception $e) {
-            error_log("PermissionRepository: Failed to get owner protection: " . $e->getMessage());
+            // Only log if it's not a "table doesn't exist" error
+            if (strpos($e->getMessage(), "doesn't exist") === false) {
+                error_log("PermissionRepository: Failed to get owner protection: " . $e->getMessage());
+            }
             return null;
+        }
+    }
+    
+    /**
+     * Check if a database table exists
+     * 
+     * @param string $tableName Table name
+     * @return bool True if table exists, false otherwise
+     */
+    private function tableExists(string $tableName): bool
+    {
+        try {
+            $sql = 'SELECT COUNT(*) as count 
+                    FROM information_schema.tables 
+                    WHERE table_schema = DATABASE() 
+                    AND table_name = :table_name';
+            
+            $result = Database::queryOne($sql, [':table_name' => $tableName]);
+            return !empty($result) && ($result['count'] ?? 0) > 0;
+        } catch (\Exception $e) {
+            // If we can't check, assume it doesn't exist
+            return false;
         }
     }
 
@@ -225,6 +257,12 @@ class PermissionRepository
             return false;
         }
 
+        // Check if the table exists first
+        if (!$this->tableExists('rbac_owner_protected')) {
+            error_log("PermissionRepository: Cannot protect permission - rbac_owner_protected table does not exist. Please apply patch 027.");
+            return false;
+        }
+
         try {
             $sql = 'INSERT INTO rbac_owner_protected 
                     (permission_id, role, password_hash, protected_by_user_id, protected_by_username, password_generated_at)
@@ -246,7 +284,10 @@ class PermissionRepository
 
             return true;
         } catch (\Exception $e) {
-            error_log("PermissionRepository: Failed to protect permission: " . $e->getMessage());
+            // Only log if it's not a "table doesn't exist" error
+            if (strpos($e->getMessage(), "doesn't exist") === false) {
+                error_log("PermissionRepository: Failed to protect permission: " . $e->getMessage());
+            }
             return false;
         }
     }
@@ -264,6 +305,12 @@ class PermissionRepository
             return false;
         }
 
+        // Check if the table exists first
+        if (!$this->tableExists('rbac_owner_protected')) {
+            // Table doesn't exist - nothing to unprotect
+            return true; // Return true since there's nothing to do
+        }
+
         try {
             $sql = 'DELETE FROM rbac_owner_protected 
                     WHERE permission_id = :permission_id AND role = :role';
@@ -275,7 +322,10 @@ class PermissionRepository
 
             return true;
         } catch (\Exception $e) {
-            error_log("PermissionRepository: Failed to unprotect permission: " . $e->getMessage());
+            // Only log if it's not a "table doesn't exist" error
+            if (strpos($e->getMessage(), "doesn't exist") === false) {
+                error_log("PermissionRepository: Failed to unprotect permission: " . $e->getMessage());
+            }
             return false;
         }
     }

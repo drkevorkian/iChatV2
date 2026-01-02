@@ -94,12 +94,6 @@ if ($currentUser !== null) {
     }
     
     $_SESSION['user_role'] = 'guest';
-    
-    // For development: allow setting role via GET parameter (remove in production)
-    if (isset($_GET['role']) && in_array($_GET['role'], ['guest', 'user', 'moderator', 'administrator'], true)) {
-        $_SESSION['user_role'] = $_GET['role'];
-        $userRole = $_GET['role'];
-    }
 }
 
 // Determine current view
@@ -136,7 +130,7 @@ $defaultRoom = $config->get('ui.default_room');
                 <?php if ($currentUser !== null): ?>
                 <button class="nav-btn" data-view="mail">Mail</button>
                 <?php endif; ?>
-                <?php if ($currentUser !== null && in_array($userRole, ['moderator', 'administrator'], true)): ?>
+                <?php if ($currentUser !== null && in_array($userRole, ['moderator', 'administrator', 'trusted_admin', 'owner'], true)): ?>
                 <button class="nav-btn" data-view="moderator">Moderator</button>
                 <?php endif; ?>
                 <?php if ($currentUser !== null && in_array($userRole, ['administrator', 'trusted_admin', 'owner'], true)): ?>
@@ -619,7 +613,7 @@ $defaultRoom = $config->get('ui.default_room');
         <?php endif; ?>
 
         <!-- Moderator View -->
-        <?php if ($currentUser !== null && in_array($userRole, ['moderator', 'administrator'], true)): ?>
+        <?php if ($currentUser !== null && in_array($userRole, ['moderator', 'administrator', 'trusted_admin', 'owner'], true)): ?>
         <div id="moderator-view" class="view-container <?php echo $view === 'moderator' ? 'active' : ''; ?>">
             <h2>Moderator Dashboard</h2>
             
@@ -766,6 +760,9 @@ $defaultRoom = $config->get('ui.default_room');
                         <button class="admin-subtab-btn" data-tab="rbac">
                             <i class="fas fa-user-shield"></i> RBAC Permissions
                         </button>
+                        <button class="admin-subtab-btn" data-tab="terminal">
+                            <i class="fas fa-terminal"></i> Terminal
+                        </button>
                     </div>
                     
                     <!-- Users Sub-Tabs -->
@@ -798,6 +795,9 @@ $defaultRoom = $config->get('ui.default_room');
                         </button>
                         <button class="admin-subtab-btn" data-tab="ai-bot">
                             <i class="fas fa-comments"></i> Bot Features
+                        </button>
+                        <button class="admin-subtab-btn" data-tab="chatbot">
+                            <i class="fas fa-robot"></i> Chatbot Bot
                         </button>
                     </div>
                 </div>
@@ -1011,6 +1011,10 @@ $defaultRoom = $config->get('ui.default_room');
                                     <div class="status-row">
                                         <span class="status-label">Uptime:</span>
                                         <span class="status-value" id="python-uptime">-</span>
+                                    </div>
+                                    <div class="status-row">
+                                        <span class="status-label">Connections:</span>
+                                        <span class="status-value" id="python-connections">-</span>
                                     </div>
                                 </div>
                                 
@@ -1344,25 +1348,6 @@ $defaultRoom = $config->get('ui.default_room');
                                     <div class="loading-messages">Loading retention policies...                                    </div>
                                 </div>
                             </div>
-                            
-                            <!-- Retention Policies Section -->
-                            <div style="margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border-color);">
-                                <h3><i class="fas fa-clock"></i> Retention Policies</h3>
-                                <p class="section-description">Configure how long audit logs are retained before automatic purging. Logs on legal hold are never purged.</p>
-                                
-                                <div class="retention-policies-controls" style="margin-bottom: 1.5rem;">
-                                    <button id="refresh-retention-policies-btn" class="btn-secondary">
-                                        <i class="fas fa-sync"></i> Refresh Policies
-                                    </button>
-                                    <button id="purge-logs-now-btn" class="btn-primary" style="margin-left: 0.5rem;">
-                                        <i class="fas fa-trash-alt"></i> Purge Old Logs Now
-                                    </button>
-                                </div>
-                                
-                                <div id="retention-policies-list" class="retention-policies-list">
-                                    <div class="loading-messages">Loading retention policies...</div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                     
@@ -1491,6 +1476,220 @@ $defaultRoom = $config->get('ui.default_room');
                                 </div>
                                 <div id="rbac-history-list" class="rbac-history-list">
                                     <div class="loading-messages">Loading history...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Terminal Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-terminal">
+                        <div class="terminal-section">
+                            <h3><i class="fas fa-terminal"></i> Web Terminal</h3>
+                            <p class="section-description">Execute system commands directly from the admin panel. All commands are logged for security auditing.</p>
+                            
+                            <div class="terminal-controls" style="margin-bottom: 1rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                <button class="btn-secondary btn-sm" id="terminal-clear-btn">
+                                    <i class="fas fa-trash"></i> Clear Terminal
+                                </button>
+                                <button class="btn-secondary btn-sm" id="terminal-reset-btn">
+                                    <i class="fas fa-redo"></i> Reset Session
+                                </button>
+                                <span style="margin-left: auto; color: var(--text-medium); font-size: 0.9rem;">
+                                    <i class="fas fa-info-circle"></i> Working Directory: <span id="terminal-cwd">-</span>
+                                </span>
+                            </div>
+                            
+                            <div id="terminal-container" style="width: 100%; height: 600px; background: #1e1e1e; border-radius: 4px; padding: 1rem; font-family: 'Courier New', monospace; overflow: auto;">
+                                <div style="color: #00ff00; margin-bottom: 0.5rem;">Web Terminal Ready</div>
+                                <div style="color: #888; margin-bottom: 1rem;">Type commands below and press Enter to execute...</div>
+                                <div id="terminal-output" style="margin-top: 1rem; color: #fff; white-space: pre-wrap; word-wrap: break-word; font-size: 14px; line-height: 1.5;">
+                                </div>
+                                <div style="display: flex; align-items: center; margin-top: 1rem; border-top: 1px solid #444; padding-top: 0.5rem;">
+                                    <span style="color: #00ff00; margin-right: 0.5rem;">$</span>
+                                    <input type="text" id="terminal-input" style="flex: 1; background: transparent; border: none; outline: none; color: #fff; font-family: 'Courier New', monospace; font-size: 14px;" placeholder="Enter command..." autocomplete="off">
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 4px; border: 1px solid var(--border-color);">
+                                <h4 style="margin-bottom: 0.5rem;"><i class="fas fa-exclamation-triangle"></i> Security Notice</h4>
+                                <p style="font-size: 0.9rem; color: var(--text-medium); margin: 0;">
+                                    All commands are executed with the same permissions as the web server. Dangerous commands (rm -rf, format, etc.) are blocked. 
+                                    All command executions are logged in the audit system.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chatbot Bot Tab -->
+                    <div class="admin-tab-pane" id="admin-tab-chatbot">
+                        <div class="chatbot-section">
+                            <h3><i class="fas fa-comments"></i> Chatbot Bot Management</h3>
+                            <p class="section-description">Create and manage AI chatbot bots that can chat with users in rooms. Configure bot settings, check dependencies, and control bot lifecycle.</p>
+                            
+                            <!-- Bot Status Panel -->
+                            <div class="chatbot-status-panel" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <h4 style="margin-bottom: 1rem;"><i class="fab fa-python"></i> Bot Status</h4>
+                                <div class="status-indicator" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                                    <div class="status-light" id="chatbot-status-light" style="width: 12px; height: 12px; border-radius: 50%; background: #ccc;"></div>
+                                    <span id="chatbot-status-text">Checking status...</span>
+                                </div>
+                                
+                                <div class="status-details" id="chatbot-status-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                                    <div class="status-row">
+                                        <span class="status-label">Bot Handle:</span>
+                                        <span class="status-value" id="chatbot-handle">-</span>
+                                    </div>
+                                    <div class="status-row">
+                                        <span class="status-label">PID:</span>
+                                        <span class="status-value" id="chatbot-pid">-</span>
+                                    </div>
+                                    <div class="status-row">
+                                        <span class="status-label">Uptime:</span>
+                                        <span class="status-value" id="chatbot-uptime">-</span>
+                                    </div>
+                                    <div class="status-row">
+                                        <span class="status-label">Current Room:</span>
+                                        <span class="status-value" id="chatbot-room">-</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="chatbot-controls" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <button class="btn-primary" id="chatbot-start-btn">
+                                        <i class="fas fa-play"></i> Start Bot
+                                    </button>
+                                    <button class="btn-secondary" id="chatbot-stop-btn">
+                                        <i class="fas fa-stop"></i> Stop Bot
+                                    </button>
+                                    <button class="btn-secondary" id="chatbot-restart-btn">
+                                        <i class="fas fa-redo"></i> Restart Bot
+                                    </button>
+                                    <button class="btn-secondary" id="chatbot-refresh-status-btn">
+                                        <i class="fas fa-sync"></i> Refresh Status
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Bot Configuration -->
+                            <div class="chatbot-config-panel" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <h4 style="margin-bottom: 1rem;"><i class="fas fa-cog"></i> Bot Configuration</h4>
+                                
+                                <!-- Bot User Section -->
+                                <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
+                                    <h5 style="margin-bottom: 0.75rem;">Bot User Account</h5>
+                                    <div id="chatbot-user-status" style="margin-bottom: 1rem;">
+                                        <div class="loading-messages">Checking bot user...</div>
+                                    </div>
+                                    <button class="btn-primary" id="chatbot-create-user-btn" style="display: none;">
+                                        <i class="fas fa-user-plus"></i> Create Bot User
+                                    </button>
+                                    
+                                    <!-- Create Bot User Form (shown when no user exists) -->
+                                    <div id="chatbot-create-user-form" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--bg-primary); border-radius: 4px;">
+                                        <form id="chatbot-user-form">
+                                            <div class="form-group" style="margin-bottom: 1rem;">
+                                                <label for="chatbot-handle-input">Bot Handle:</label>
+                                                <input type="text" id="chatbot-handle-input" class="form-control" placeholder="ChatBot" required pattern="[a-zA-Z0-9._-]{3,50}" maxlength="50">
+                                                <small style="color: var(--text-medium);">3-50 characters, alphanumeric, dots, underscores, hyphens</small>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom: 1rem;">
+                                                <label for="chatbot-email-input">Email:</label>
+                                                <input type="email" id="chatbot-email-input" class="form-control" placeholder="chatbot@sentinel.local" required>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom: 1rem;">
+                                                <label for="chatbot-role-input">Role:</label>
+                                                <select id="chatbot-role-input" class="form-control">
+                                                    <option value="user" selected>User</option>
+                                                    <option value="moderator">Moderator</option>
+                                                    <option value="administrator">Administrator</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-actions" style="display: flex; gap: 0.5rem;">
+                                                <button type="submit" class="btn-primary">
+                                                    <i class="fas fa-save"></i> Create User
+                                                </button>
+                                                <button type="button" class="btn-secondary" id="chatbot-cancel-user-form-btn">Cancel</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                                
+                                <!-- Bot Settings Section -->
+                                <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
+                                    <h5 style="margin-bottom: 0.75rem;">Bot Settings</h5>
+                                    <form id="chatbot-settings-form">
+                                        <div class="form-group" style="margin-bottom: 1rem;">
+                                            <label for="chatbot-display-name-input">Display Name:</label>
+                                            <input type="text" id="chatbot-display-name-input" class="form-control" placeholder="ChatBot" maxlength="100">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 1rem;">
+                                            <label for="chatbot-default-room-input">Default Room:</label>
+                                            <input type="text" id="chatbot-default-room-input" class="form-control" placeholder="lobby" pattern="[a-zA-Z0-9_-]+" maxlength="255">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 1rem;">
+                                            <label for="chatbot-response-delay-input">Response Delay (seconds):</label>
+                                            <input type="number" id="chatbot-response-delay-input" class="form-control" value="2.0" min="0.5" max="10" step="0.5">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 1rem;">
+                                            <label for="chatbot-ai-provider-input">AI Provider:</label>
+                                            <select id="chatbot-ai-provider-input" class="form-control">
+                                                <option value="simple" selected>Simple (Rule-based)</option>
+                                                <option value="openai">OpenAI</option>
+                                                <option value="ollama">Ollama (Local LLM)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="chatbot-openai-key-group" style="margin-bottom: 1rem; display: none;">
+                                            <label for="chatbot-openai-key-input">OpenAI API Key:</label>
+                                            <input type="password" id="chatbot-openai-key-input" class="form-control" placeholder="sk-...">
+                                        </div>
+                                        <div class="form-group" id="chatbot-ollama-url-group" style="margin-bottom: 1rem; display: none;">
+                                            <label for="chatbot-ollama-url-input">Ollama URL:</label>
+                                            <input type="text" id="chatbot-ollama-url-input" class="form-control" placeholder="http://localhost:11434" value="http://localhost:11434">
+                                        </div>
+                                        <div class="form-group" id="chatbot-ollama-model-group" style="margin-bottom: 1rem; display: none;">
+                                            <label for="chatbot-ollama-model-input">Ollama Model:</label>
+                                            <input type="text" id="chatbot-ollama-model-input" class="form-control" placeholder="llama2" value="llama2">
+                                        </div>
+                                        <div class="form-actions">
+                                            <button type="submit" class="btn-primary">
+                                                <i class="fas fa-save"></i> Save Settings
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                <!-- Dependencies Section -->
+                                <div>
+                                    <h5 style="margin-bottom: 0.75rem;">Python Dependencies</h5>
+                                    <div id="chatbot-dependencies-status" style="margin-bottom: 1rem;">
+                                        <div class="loading-messages">Checking dependencies...</div>
+                                    </div>
+                                    <button class="btn-primary" id="chatbot-install-deps-btn" style="display: none;">
+                                        <i class="fas fa-download"></i> Install Dependencies
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Bot Logs -->
+                            <div class="chatbot-logs-panel" style="padding: 1.5rem; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                    <h4><i class="fas fa-terminal"></i> Bot Logs</h4>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <select id="chatbot-logs-lines" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                                            <option value="50">50 lines</option>
+                                            <option value="100" selected>100 lines</option>
+                                            <option value="200">200 lines</option>
+                                            <option value="500">500 lines</option>
+                                        </select>
+                                        <button class="btn-secondary btn-sm" id="chatbot-logs-refresh-btn">
+                                            <i class="fas fa-sync"></i> Refresh
+                                        </button>
+                                        <button class="btn-secondary btn-sm" id="chatbot-logs-clear-btn">
+                                            <i class="fas fa-trash"></i> Clear
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="chatbot-logs-container" style="max-height: 400px; overflow-y: auto; background: var(--bg-primary); padding: 1rem; border-radius: 4px; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; color: var(--text-primary);">
+                                    <div class="loading-messages">Loading logs...</div>
                                 </div>
                             </div>
                         </div>
@@ -1917,6 +2116,8 @@ $defaultRoom = $config->get('ui.default_room');
     <script src="/iChat/js/ai-systems-admin.js"></script>
     <script src="/iChat/js/audit-logs-admin.js"></script>
     <script src="/iChat/js/rbac-admin.js"></script>
+    <script src="/iChat/js/chatbot-admin.js"></script>
+    <script src="/iChat/js/terminal-admin.js"></script>
     <script src="/iChat/js/app.js"></script>
 </body>
 </html>
